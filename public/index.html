@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Maths Proxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d1a;
+      --surface: #13132a;
+      --border: #2a2a4a;
+      --accent: #e94560;
+      --accent2: #0f3460;
+      --text: #e8e8f0;
+      --muted: #6b6b8a;
+      --blue: #4d9de0;
+      --green: #07b39b;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Noise texture overlay ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.4;
+    }
+
+    header {
+      display: flex;
+      justify-content: flex-end;
+      padding: 16px 24px;
+      gap: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header a {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 0.5px;
+      transition: color 0.2s;
+    }
+
+    header a:hover { color: var(--text); }
+
+    header .signin {
+      background: var(--accent);
+      color: white;
+      padding: 8px 20px;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    header .signin:hover { background: #ff2d4e; color: white; }
+
+    /* ─── Main ─── */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding-bottom: 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ─── Logo ─── */
+    .logo {
+      margin-bottom: 36px;
+      text-align: center;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .logo-text {
+      font-size: 68px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -3px;
+    }
+
+    .logo-text .m { color: #4d9de0; }
+    .logo-text .a { color: #e94560; }
+    .logo-text .t { color: #f5a623; }
+    .logo-text .h { color: #4d9de0; }
+    .logo-text .s { color: #07b39b; }
+    .logo-text .space { display: inline-block; width: 18px; }
+    .logo-text .p { color: #e94560; }
+    .logo-text .r { color: #f5a623; }
+    .logo-text .o { color: #4d9de0; }
+    .logo-text .x { color: #07b39b; }
+    .logo-text .y { color: #e94560; }
+
+    .logo-sub {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+
+    /* ─── Search box ─── */
+    .search-wrapper {
+      width: 100%;
+      max-width: 580px;
+      position: relative;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 14px 52px 14px 22px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 28px;
+      font-size: 16px;
+      font-family: 'Syne', sans-serif;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-input::placeholder { color: var(--muted); }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.15), 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .search-btn-icon {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 4px;
+      transition: color 0.2s;
+    }
+
+    .search-btn-icon:hover { color: var(--accent); }
+
+    /* ─── Buttons ─── */
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .btn {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      padding: 9px 20px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(233,69,96,0.2);
+    }
+
+    /* ─── Results page ─── */
+    #results-page {
+      display: none;
+      flex-direction: column;
+      min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .results-logo {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      text-decoration: none;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+
+    .results-logo span:nth-child(1) { color: #4d9de0; }
+    .results-logo span:nth-child(2) { color: #e94560; }
+    .results-logo span:nth-child(3) { color: #f5a623; }
+    .results-logo span:nth-child(4) { color: #4d9de0; }
+    .results-logo span:nth-child(5) { color: #07b39b; }
+
+    .results-search-wrap {
+      flex: 1;
+      max-width: 580px;
+      position: relative;
+    }
+
+    .results-input {
+      width: 100%;
+      padding: 10px 44px 10px 18px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 22px;
+      font-size: 15px;
+      font-family: 'Syne', sans-serif;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .results-input:focus { border-color: var(--accent); }
+
+    .results-search-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .results-body {
+      padding: 24px 24px 40px;
+      max-width: 700px;
+    }
+
+    .results-count {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+
+    .result-item {
+      margin-bottom: 28px;
+      animation: fadeUp 0.3s ease both;
+    }
+
+    .result-url {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      color: var(--green);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--blue);
+      cursor: pointer;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+
+    .result-title:hover { color: var(--accent); text-decoration: underline; }
+
+    .result-snippet {
+      font-size: 14px;
+      color: #a0a0b8;
+      line-height: 1.6;
+    }
+
+    /* ─── Loading spinner ─── */
+    .spinner {
+      display: none;
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 60px auto;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    footer a { color: var(--muted); text-decoration: none; margin-left: 18px; }
+    footer a:hover { color: var(--text); }
+
+    /* ─── Animations ─── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ─── Glowing grid bg ─── */
+    .grid-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(77,157,224,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(77,157,224,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<!-- ═══ HOME PAGE ═══ -->
+<div id="home-page">
+  <header>
+    <a href="#">About</a>
+    <a href="#">Settings</a>
+    <a href="#" class="signin">Sign in</a>
+  </header>
+
+  <main>
+    <div class="logo">
+      <div class="logo-text">
+        <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="space"></span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
+      </div>
+      <div class="logo-sub">secure · anonymous · fast</div>
+    </div>
+
+    <div class="search-wrapper">
+      <input class="search-input" type="text" id="homeInput" placeholder="Search anything..." autocomplete="off"/>
+      <button class="search-btn-icon" onclick="doSearch()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="buttons">
+      <button class="btn" onclick="doSearch()">Maths Proxy Search</button>
+      <button class="btn" onclick="feelingLucky()">I'm Feeling Lucky</button>
+    </div>
+  </main>
+
+  <footer>
+    <span>Spain</span>
+    <div>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+      <a href="#">Settings</a>
+    </div>
+  </footer>
+</div>
+
+<!-- ═══ RESULTS PAGE ═══ -->
+<div id="results-page">
+  <div class="results-header">
+    <a class="results-logo" href="#" onclick="goHome(); return false;">
+      <span>M</span><span>a</span><span>t</span><span>h</span><span>s</span>
+    </a>
+    <div class="results-search-wrap">
+      <input class="results-input" type="text" id="resultsInput" autocomplete="off"/>
+      <button class="results-search-icon" onclick="doSearch()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="results-body">
+    <div class="spinner" id="spinner"></div>
+    <div class="results-count" id="resultsCount"></div>
+    <div id="resultsList"></div>
+  </div>
+</div>
+
+<script>
+  const homeInput = document.getElementById('homeInput');
+  const resultsInput = document.getElementById('resultsInput');
+
+  homeInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  resultsInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+  function goHome() {
+    document.getElementById('home-page').style.display = '';
+    document.getElementById('results-page').style.display = 'none';
+  }
+
+  function doSearch() {
+    const q = (homeInput.value || resultsInput.value).trim();
+    if (!q) return;
+
+    homeInput.value = q;
+    resultsInput.value = q;
+
+    document.getElementById('home-page').style.display = 'none';
+    const rp = document.getElementById('results-page');
+    rp.style.display = 'flex';
+
+    const spinner = document.getElementById('spinner');
+    const list = document.getElementById('resultsList');
+    const count = document.getElementById('resultsCount');
+
+    spinner.style.display = 'block';
+    list.innerHTML = '';
+    count.textContent = '';
+
+    fetch(`/search?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(data => {
+        spinner.style.display = 'none';
+
+        if (!data.results || data.results.length === 0) {
+          list.innerHTML = '<p style="color:var(--muted);font-family:monospace;">No results found.</p>';
+          return;
+        }
+
+        count.textContent = `~ ${data.results.length} results found`;
+
+        data.results.forEach((item, i) => {
+          const div = document.createElement('div');
+          div.className = 'result-item';
+          div.style.animationDelay = `${i * 0.04}s`;
+          div.innerHTML = `
+            <div class="result-url">${item.display || item.url}</div>
+            <a class="result-title" href="/proxy?url=${encodeURIComponent(item.url)}" target="_blank">${item.title}</a>
+            <div class="result-snippet">${item.snippet}</div>
+          `;
+          list.appendChild(div);
+        });
+      })
+      .catch(err => {
+        spinner.style.display = 'none';
+        list.innerHTML = `<p style="color:var(--accent);font-family:monospace;">Error: ${err.message}</p>`;
+      });
+  }
+
+  function feelingLucky() {
+    const q = homeInput.value.trim();
+    if (!q) return;
+    fetch(`/search?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.results && data.results.length > 0) {
+          window.open(`/proxy?url=${encodeURIComponent(data.results[0].url)}`, '_blank');
+        }
+      });
+  }
+</script>
+</body>
+</html>
