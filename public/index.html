@@ -5,847 +5,1240 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Maths Proxy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
-      --bg:       #07070f;
-      --surface:  #0f0f1e;
-      --card:     #14142a;
-      --border:   #1e1e3a;
-      --accent:   #e94560;
-      --accent2:  #4d9de0;
-      --green:    #00d4aa;
-      --yellow:   #f5a623;
-      --text:     #eeeef5;
-      --muted:    #5a5a7a;
-      --sub:      #9a9abf;
-      --radius:   10px;
+      --bg:      #08080f;
+      --chrome:  #0e0e1c;
+      --surface: #131325;
+      --card:    #191930;
+      --border:  #22223a;
+      --border2: #2e2e50;
+      --accent:  #e94560;
+      --blue:    #4b8ef0;
+      --green:   #00cfa8;
+      --yellow:  #f0a030;
+      --text:    #eeeef8;
+      --sub:     #8888aa;
+      --muted:   #44445a;
+      --tab-h:   36px;
+      --bar-h:   46px;
+      --r:       8px;
     }
-
     *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
     body {
-      font-family: 'Space Grotesk', sans-serif;
+      font-family: 'DM Sans', sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      height: 100vh;
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
+      overflow: hidden;
     }
 
-    /* Grid background */
-    body::before {
+    /* ── CHROME (top browser UI) ── */
+    #chrome {
+      background: var(--chrome);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    /* Tab bar */
+    #tab-bar {
+      display: flex;
+      align-items: flex-end;
+      padding: 8px 8px 0;
+      gap: 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      min-height: calc(var(--tab-h) + 8px);
+    }
+    #tab-bar::-webkit-scrollbar { display: none; }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px 0 12px;
+      height: var(--tab-h);
+      min-width: 140px;
+      max-width: 220px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 7px 7px 0 0;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--sub);
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .tab:hover { background: var(--card); color: var(--text); }
+    .tab.active {
+      background: var(--bg);
+      color: var(--text);
+      border-color: var(--border2);
+      z-index: 2;
+    }
+    .tab-favicon {
+      width: 14px; height: 14px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      font-size: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tab-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    .tab-close {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+      flex-shrink: 0;
+      color: var(--sub);
+    }
+    .tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
+    .tab-close:hover { background: rgba(233,69,96,0.25); color: var(--accent); }
+
+    #new-tab-btn {
+      width: 28px; height: var(--tab-h);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 18px;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    #new-tab-btn:hover { color: var(--text); background: var(--surface); }
+
+    /* Nav bar */
+    #nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      height: var(--bar-h);
+    }
+
+    .nav-btn {
+      width: 30px; height: 30px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      background: none;
+      border: none;
+      color: var(--sub);
+      cursor: pointer;
+      font-size: 15px;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .nav-btn:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* URL bar */
+    #url-wrap {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    #url-icon {
+      position: absolute;
+      left: 10px;
+      font-size: 13px;
+      color: var(--green);
+      pointer-events: none;
+    }
+    #url-input {
+      width: 100%;
+      height: 32px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      padding: 0 36px 0 30px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #url-input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(75,142,240,0.15);
+      background: var(--card);
+    }
+    #url-go {
+      position: absolute;
+      right: 8px;
+      background: none;
+      border: none;
+      color: var(--sub);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+      transition: color 0.15s;
+    }
+    #url-go:hover { color: var(--blue); }
+
+    /* Bookmark btn */
+    #bookmark-btn {
+      font-size: 16px;
+      transition: color 0.2s, transform 0.15s;
+    }
+    #bookmark-btn.bookmarked { color: var(--yellow); }
+    #bookmark-btn:hover { transform: scale(1.2); }
+
+    /* User / auth */
+    #auth-area { display: flex; align-items: center; gap: 6px; }
+    .hdr-btn {
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      border: 1px solid var(--border2);
+      background: var(--surface);
+      color: var(--sub);
+      transition: all 0.15s;
+    }
+    .hdr-btn:hover { border-color: var(--blue); color: var(--text); }
+    .hdr-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .hdr-btn.primary:hover { background: #ff2d4e; }
+
+    .user-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 3px 10px 3px 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--sub);
+      transition: border-color 0.15s;
+    }
+    .user-pill:hover { border-color: var(--accent); }
+    .u-avatar {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: white;
+    }
+
+    /* ── CONTENT AREA ── */
+    #content-area {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .tab-page {
+      display: none;
+      width: 100%; height: 100%;
+      flex-direction: column;
+    }
+    .tab-page.active { display: flex; }
+
+    /* New tab / home page */
+    .home-page {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      overflow-y: auto;
+      padding: 20px;
+      background: var(--bg);
+    }
+
+    /* Grid BG */
+    .home-page::before {
       content: '';
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(77,157,224,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(77,157,224,0.04) 1px, transparent 1px);
-      background-size: 48px 48px;
+        linear-gradient(rgba(75,142,240,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(75,142,240,0.03) 1px, transparent 1px);
+      background-size: 44px 44px;
       pointer-events: none;
-      z-index: 0;
     }
 
-    /* Glow blobs */
-    .blob {
-      position: fixed;
-      border-radius: 50%;
-      filter: blur(90px);
-      pointer-events: none;
-      z-index: 0;
-      opacity: 0.18;
-    }
-    .blob-1 { width:500px; height:500px; background:#e94560; top:-150px; left:-150px; }
-    .blob-2 { width:400px; height:400px; background:#4d9de0; bottom:-100px; right:-100px; }
-
-    /* ─── HEADER ─── */
-    #header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 28px;
-      position: relative;
-      z-index: 10;
-      border-bottom: 1px solid transparent;
-      transition: border-color 0.3s, background 0.3s;
-    }
-
-    #header.scrolled {
-      background: rgba(7,7,15,0.92);
-      border-color: var(--border);
-      backdrop-filter: blur(12px);
-    }
-
-    .header-logo {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      text-decoration: none;
-      cursor: pointer;
-    }
-    .header-logo .m { color: #4d9de0; }
-    .header-logo .a { color: #e94560; }
-    .header-logo .t { color: #f5a623; }
-    .header-logo .h { color: #4d9de0; }
-    .header-logo .s { color: #00d4aa; }
-    .header-logo .sp { color: transparent; }
-    .header-logo .p { color: #e94560; }
-    .header-logo .r { color: #f5a623; }
-    .header-logo .o { color: #4d9de0; }
-    .header-logo .x { color: #00d4aa; }
-    .header-logo .y { color: #e94560; }
-
-    .header-nav { display: flex; align-items: center; gap: 12px; }
-
-    .btn-ghost {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--sub);
-      padding: 7px 16px;
-      border-radius: 6px;
-      font-size: 13px;
-      font-family: 'Space Grotesk', sans-serif;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-ghost:hover { border-color: var(--accent2); color: var(--text); }
-
-    .btn-primary {
-      background: var(--accent);
-      border: none;
-      color: white;
-      padding: 8px 20px;
-      border-radius: 6px;
-      font-size: 13px;
+    .logo-wrap { margin-bottom: 28px; text-align: center; }
+    .logo-big {
+      font-size: clamp(42px, 8vw, 68px);
       font-weight: 600;
-      font-family: 'Space Grotesk', sans-serif;
-      cursor: pointer;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-    .btn-primary:hover { background: #ff2d4e; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(233,69,96,0.35); }
-
-    /* User avatar in header */
-    .user-chip {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 5px 14px 5px 6px;
-      cursor: pointer;
-      transition: border-color 0.2s;
-    }
-    .user-chip:hover { border-color: var(--accent2); }
-    .user-avatar {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: white;
-    }
-    .user-email { font-size: 13px; color: var(--sub); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-    /* ─── MODAL ─── */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(6px);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-    .modal-overlay.open { display: flex; }
-
-    .modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 36px 32px;
-      width: 100%;
-      max-width: 400px;
-      position: relative;
-      animation: modalIn 0.25s ease;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.6);
-    }
-
-    @keyframes modalIn {
-      from { opacity:0; transform: scale(0.95) translateY(10px); }
-      to   { opacity:1; transform: scale(1) translateY(0); }
-    }
-
-    .modal-close {
-      position: absolute;
-      top: 16px; right: 16px;
-      background: none; border: none;
-      color: var(--muted); cursor: pointer;
-      font-size: 20px; line-height: 1;
-      transition: color 0.2s;
-    }
-    .modal-close:hover { color: var(--text); }
-
-    .modal-logo {
-      text-align: center;
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: -1px;
-      margin-bottom: 6px;
-    }
-    .modal-logo .m { color: #4d9de0; }
-    .modal-logo .a { color: #e94560; }
-    .modal-logo .t { color: #f5a623; }
-    .modal-logo .h { color: #4d9de0; }
-    .modal-logo .s { color: #00d4aa; }
-
-    .modal-sub { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 28px; font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
-
-    .tab-bar {
-      display: flex;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 24px;
-    }
-    .tab {
-      flex: 1;
-      padding: 9px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-family: 'Space Grotesk', sans-serif;
-      transition: all 0.2s;
-    }
-    .tab.active { background: var(--accent); color: white; }
-
-    .form-group { margin-bottom: 16px; }
-    .form-label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--sub);
-      margin-bottom: 6px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    .form-input {
-      width: 100%;
-      padding: 11px 14px;
-      background: var(--card);
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      font-size: 14px;
-      font-family: 'Space Grotesk', sans-serif;
-      color: var(--text);
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .form-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(233,69,96,0.12);
-    }
-    .form-input::placeholder { color: var(--muted); }
-
-    .btn-full {
-      width: 100%;
-      padding: 12px;
-      background: var(--accent);
-      border: none;
-      border-radius: 8px;
-      color: white;
-      font-size: 15px;
-      font-weight: 700;
-      font-family: 'Space Grotesk', sans-serif;
-      cursor: pointer;
-      margin-top: 4px;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-    .btn-full:hover { background: #ff2d4e; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(233,69,96,0.35); }
-    .btn-full:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-    .auth-msg {
-      margin-top: 14px;
-      padding: 10px 14px;
-      border-radius: 7px;
-      font-size: 13px;
-      text-align: center;
-      display: none;
-    }
-    .auth-msg.error { background: rgba(233,69,96,0.12); border: 1px solid rgba(233,69,96,0.3); color: #ff6b7a; display: block; }
-    .auth-msg.success { background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3); color: var(--green); display: block; }
-
-    /* ─── HOME PAGE ─── */
-    #home-page {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding-bottom: 80px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .main-logo {
-      margin-bottom: 32px;
-      text-align: center;
-      animation: fadeDown 0.5s ease both;
-    }
-    .main-logo-text {
-      font-size: clamp(48px, 10vw, 78px);
-      font-weight: 700;
-      letter-spacing: -3px;
+      letter-spacing: -2px;
       line-height: 1;
     }
-    .main-logo-text .m { color: #4d9de0; }
-    .main-logo-text .a { color: #e94560; }
-    .main-logo-text .t { color: #f5a623; }
-    .main-logo-text .h { color: #4d9de0; }
-    .main-logo-text .s { color: #00d4aa; }
-    .main-logo-text .sp { display: inline-block; width: 18px; }
-    .main-logo-text .p { color: #e94560; }
-    .main-logo-text .r { color: #f5a623; }
-    .main-logo-text .o { color: #4d9de0; }
-    .main-logo-text .x { color: #00d4aa; }
-    .main-logo-text .y { color: #e94560; }
-
-    .main-logo-sub {
+    .logo-big .m { color: #4b8ef0; }
+    .logo-big .a { color: #e94560; }
+    .logo-big .t { color: #f0a030; }
+    .logo-big .h { color: #4b8ef0; }
+    .logo-big .s { color: #00cfa8; }
+    .logo-big .sp { display: inline-block; width: 14px; }
+    .logo-big .p { color: #e94560; }
+    .logo-big .r { color: #f0a030; }
+    .logo-big .o { color: #4b8ef0; }
+    .logo-big .x { color: #00cfa8; }
+    .logo-big .y { color: #e94560; }
+    .logo-sub {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: var(--muted);
-      letter-spacing: 5px;
+      letter-spacing: 4px;
       text-transform: uppercase;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
-    .search-wrapper {
-      width: 100%;
-      max-width: 600px;
+    /* Home search */
+    .home-search-wrap {
+      width: 100%; max-width: 560px;
       position: relative;
-      animation: fadeUp 0.5s 0.1s ease both;
+      margin-bottom: 14px;
     }
-
-    .search-input {
+    .home-search {
       width: 100%;
-      padding: 15px 56px 15px 22px;
+      padding: 13px 50px 13px 20px;
       background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 32px;
-      font-size: 16px;
-      font-family: 'Space Grotesk', sans-serif;
+      border: 1.5px solid var(--border2);
+      border-radius: 26px;
+      font-size: 15px;
+      font-family: 'DM Sans', sans-serif;
       color: var(--text);
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-    .search-input:focus {
+    .home-search:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(233,69,96,0.12), 0 8px 32px rgba(0,0,0,0.4);
+      box-shadow: 0 0 0 4px rgba(233,69,96,0.1), 0 8px 32px rgba(0,0,0,0.35);
     }
-    .search-input::placeholder { color: var(--muted); }
-
-    .search-go {
+    .home-search::placeholder { color: var(--muted); }
+    .home-search-go {
       position: absolute;
       right: 8px; top: 50%;
       transform: translateY(-50%);
+      width: 36px; height: 36px;
+      border-radius: 50%;
       background: var(--accent);
       border: none;
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
       color: white;
       transition: background 0.2s, transform 0.15s;
     }
-    .search-go:hover { background: #ff2d4e; transform: translateY(-50%) scale(1.08); }
+    .home-search-go:hover { background: #ff2d4e; transform: translateY(-50%) scale(1.08); }
 
-    .home-buttons {
-      display: flex; gap: 10px; margin-top: 22px;
-      animation: fadeUp 0.5s 0.2s ease both;
+    .home-btns { display: flex; gap: 8px; }
+    .home-btn {
+      padding: 8px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--sub);
+      font-size: 13px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s;
     }
+    .home-btn:hover { border-color: var(--accent); color: var(--text); }
 
-    /* ─── RESULTS PAGE ─── */
-    #results-page {
+    /* Quick links */
+    .quick-links {
+      display: flex; gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 28px;
+      max-width: 560px;
+    }
+    .quick-link {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      width: 72px;
+      cursor: pointer;
+      padding: 10px 6px;
+      border-radius: 10px;
+      transition: background 0.15s;
+    }
+    .quick-link:hover { background: var(--surface); }
+    .quick-link-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .quick-link span { font-size: 11px; color: var(--sub); }
+
+    /* ── RESULTS PAGE ── */
+    .results-page {
       display: none;
       flex-direction: column;
-      min-height: 100vh;
-      position: relative;
-      z-index: 1;
+      width: 100%; height: 100%;
+      overflow-y: auto;
+      background: var(--bg);
     }
+    .results-page.visible { display: flex; }
 
-    .results-bar {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 10px 20px;
-      background: rgba(7,7,15,0.95);
-      border-bottom: 1px solid var(--border);
-      backdrop-filter: blur(10px);
-      position: sticky; top: 0; z-index: 100;
-    }
-
-    .results-logo-small {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      cursor: pointer;
-      flex-shrink: 0;
-      text-decoration: none;
-    }
-    .results-logo-small .m { color: #4d9de0; }
-    .results-logo-small .a { color: #e94560; }
-    .results-logo-small .t { color: #f5a623; }
-    .results-logo-small .h { color: #4d9de0; }
-    .results-logo-small .s { color: #00d4aa; }
-
-    .results-input-wrap { flex: 1; max-width: 560px; position: relative; }
-
-    .results-input {
-      width: 100%;
-      padding: 10px 44px 10px 18px;
-      background: var(--card);
-      border: 1.5px solid var(--border);
-      border-radius: 22px;
-      font-size: 15px;
-      font-family: 'Space Grotesk', sans-serif;
-      color: var(--text);
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .results-input:focus { border-color: var(--accent); }
-
-    .results-search-icon {
-      position: absolute;
-      right: 13px; top: 50%;
-      transform: translateY(-50%);
-      background: none; border: none;
-      color: var(--muted); cursor: pointer;
-      transition: color 0.2s;
-    }
-    .results-search-icon:hover { color: var(--accent); }
-
-    .results-body { padding: 24px 28px 60px; max-width: 740px; }
+    .results-body { padding: 20px 24px 60px; max-width: 720px; }
 
     .results-meta {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: var(--muted);
       letter-spacing: 1px;
-      margin-bottom: 22px;
       text-transform: uppercase;
+      margin-bottom: 18px;
     }
 
     .result-card {
-      margin-bottom: 26px;
-      padding: 18px 20px;
+      margin-bottom: 18px;
+      padding: 14px 16px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      transition: border-color 0.2s, box-shadow 0.2s;
-      animation: fadeUp 0.3s ease both;
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+      animation: slideUp 0.25s ease both;
     }
     .result-card:hover {
-      border-color: rgba(77,157,224,0.4);
+      border-color: var(--border2);
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      transform: translateY(-1px);
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform: translateY(10px); }
+      to   { opacity:1; transform: translateY(0); }
     }
 
     .result-domain {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: var(--green);
-      margin-bottom: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      margin-bottom: 3px;
     }
-
     .result-title {
-      font-size: 17px;
-      font-weight: 600;
-      color: var(--accent2);
-      text-decoration: none;
-      display: block;
-      margin-bottom: 6px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--blue);
+      margin-bottom: 5px;
       line-height: 1.35;
-      transition: color 0.2s;
     }
-    .result-title:hover { color: var(--accent); }
+    .result-snippet { font-size: 13px; color: var(--sub); line-height: 1.6; }
 
-    .result-snippet {
-      font-size: 13px;
-      color: var(--sub);
-      line-height: 1.65;
-    }
-
-    /* Spinner */
-    .spinner {
+    /* ── PROXY IFRAME PAGE ── */
+    .proxy-page {
       display: none;
-      width: 32px; height: 32px;
+      flex-direction: column;
+      width: 100%; height: 100%;
+    }
+    .proxy-page.visible { display: flex; }
+
+    .proxy-loading {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 10;
+    }
+    .proxy-loading.visible { display: flex; }
+
+    .load-spinner {
+      width: 36px; height: 36px;
       border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+    }
+    .load-url { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .proxy-frame-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .proxy-frame {
+      width: 100%; height: 100%;
+      border: none;
+      background: white;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Spinner in results */
+    .search-spinner {
+      display: none;
+      width: 28px; height: 28px;
+      border: 2.5px solid var(--border);
       border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.65s linear infinite;
       margin: 60px auto;
     }
 
-    /* ─── FOOTER ─── */
-    footer {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 14px 28px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      color: var(--muted);
-      position: relative;
-      z-index: 1;
+    /* ── BOOKMARKS PANEL ── */
+    #bookmarks-panel {
+      display: none;
+      position: fixed;
+      top: 0; right: 0;
+      width: 300px; height: 100%;
+      background: var(--chrome);
+      border-left: 1px solid var(--border2);
+      z-index: 100;
+      flex-direction: column;
+      animation: slideIn 0.2s ease;
     }
-    footer a { color: var(--muted); text-decoration: none; margin-left: 18px; }
-    footer a:hover { color: var(--text); }
+    #bookmarks-panel.open { display: flex; }
+    @keyframes slideIn {
+      from { transform: translateX(100%); }
+      to   { transform: translateX(0); }
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px; font-weight: 600;
+    }
+    .panel-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; transition: color 0.15s; }
+    .panel-close:hover { color: var(--text); }
+    .bookmarks-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .bookmark-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 13px;
+    }
+    .bookmark-item:hover { background: var(--surface); }
+    .bookmark-item .bm-icon { font-size: 14px; flex-shrink: 0; }
+    .bookmark-item .bm-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .bookmark-item .bm-del { opacity: 0; color: var(--muted); cursor: pointer; font-size: 14px; transition: opacity 0.15s, color 0.15s; flex-shrink: 0; }
+    .bookmark-item:hover .bm-del { opacity: 1; }
+    .bookmark-item .bm-del:hover { color: var(--accent); }
+    .empty-state { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
-    /* ─── Animations ─── */
-    @keyframes fadeDown {
-      from { opacity:0; transform: translateY(-16px); }
-      to   { opacity:1; transform: translateY(0); }
+    /* ── HISTORY PANEL ── */
+    #history-panel {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 300px; height: 100%;
+      background: var(--chrome);
+      border-right: 1px solid var(--border2);
+      z-index: 100;
+      flex-direction: column;
+      animation: slideInLeft 0.2s ease;
     }
-    @keyframes fadeUp {
-      from { opacity:0; transform: translateY(14px); }
-      to   { opacity:1; transform: translateY(0); }
+    #history-panel.open { display: flex; }
+    @keyframes slideInLeft {
+      from { transform: translateX(-100%); }
+      to   { transform: translateX(0); }
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(6px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 14px;
+      padding: 32px 28px;
+      width: 100%; max-width: 380px;
+      position: relative;
+      animation: popIn 0.2s ease;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    @keyframes popIn {
+      from { opacity:0; transform: scale(0.94) translateY(8px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+    .modal-close { position: absolute; top:14px; right:14px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; transition: color 0.15s; }
+    .modal-close:hover { color: var(--text); }
+    .modal-logo { text-align:center; font-size:28px; font-weight:600; letter-spacing:-1px; margin-bottom:4px; }
+    .modal-logo .m{color:#4b8ef0} .modal-logo .a{color:#e94560} .modal-logo .t{color:#f0a030} .modal-logo .h{color:#4b8ef0} .modal-logo .s{color:#00cfa8}
+    .modal-tagline { text-align:center; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; margin-bottom:24px; }
+    .tab-bar-modal { display:flex; background:var(--card); border-radius:8px; padding:3px; margin-bottom:20px; gap:3px; }
+    .modal-tab { flex:1; padding:7px; text-align:center; font-size:12px; font-weight:600; cursor:pointer; background:none; border:none; color:var(--muted); font-family:'DM Sans',sans-serif; border-radius:6px; transition:all 0.15s; }
+    .modal-tab.active { background:var(--accent); color:white; }
+    .form-group { margin-bottom:14px; }
+    .form-label { display:block; font-size:11px; font-weight:600; color:var(--sub); margin-bottom:5px; letter-spacing:0.5px; text-transform:uppercase; font-family:'JetBrains Mono',monospace; }
+    .form-input { width:100%; padding:10px 12px; background:var(--card); border:1.5px solid var(--border2); border-radius:7px; font-size:14px; font-family:'DM Sans',sans-serif; color:var(--text); outline:none; transition:border-color 0.2s; }
+    .form-input:focus { border-color:var(--accent); }
+    .form-input::placeholder { color:var(--muted); }
+    .btn-full { width:100%; padding:11px; background:var(--accent); border:none; border-radius:7px; color:white; font-size:14px; font-weight:600; font-family:'DM Sans',sans-serif; cursor:pointer; margin-top:4px; transition:all 0.15s; }
+    .btn-full:hover { background:#ff2d4e; transform:translateY(-1px); box-shadow:0 6px 18px rgba(233,69,96,0.3); }
+    .btn-full:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+    .auth-msg { margin-top:12px; padding:9px 12px; border-radius:6px; font-size:12px; text-align:center; display:none; }
+    .auth-msg.error { background:rgba(233,69,96,0.1); border:1px solid rgba(233,69,96,0.25); color:#ff6b7a; display:block; }
+    .auth-msg.success { background:rgba(0,207,168,0.08); border:1px solid rgba(0,207,168,0.25); color:var(--green); display:block; }
+
+    /* Progress bar */
+    #progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      background: var(--accent);
+      z-index: 999;
+      width: 0%;
+      transition: width 0.3s, opacity 0.3s;
+      opacity: 0;
+    }
+    #progress.loading { opacity: 1; animation: progress-anim 1.5s ease infinite; }
+    @keyframes progress-anim {
+      0%   { width: 0%; }
+      50%  { width: 70%; }
+      100% { width: 90%; }
+    }
+    #progress.done { width: 100%; opacity: 0; transition: width 0.1s, opacity 0.5s 0.1s; }
   </style>
 </head>
 <body>
 
-<div class="blob blob-1"></div>
-<div class="blob blob-2"></div>
+<div id="progress"></div>
 
-<!-- ══════════════════ AUTH MODAL ══════════════════ -->
+<!-- ══════ AUTH MODAL ══════ -->
 <div class="modal-overlay" id="authModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">✕</button>
-
-    <div class="modal-logo">
-      <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span>
+    <div class="modal-logo"><span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span></div>
+    <div class="modal-tagline">private · fast · unrestricted</div>
+    <div class="tab-bar-modal">
+      <button class="modal-tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+      <button class="modal-tab" id="tabReg" onclick="switchTab('register')">Register</button>
     </div>
-    <div class="modal-sub">secure · anonymous · fast</div>
-
-    <div class="tab-bar">
-      <button class="tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
-      <button class="tab" id="tabRegister" onclick="switchTab('register')">Register</button>
-    </div>
-
-    <!-- Login -->
     <div id="formLogin">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input class="form-input" type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input class="form-input" type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
-      </div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email"/></div>
+      <div class="form-group"><label class="form-label">Password</label><input class="form-input" type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/></div>
       <button class="btn-full" id="loginBtn" onclick="doLogin()">Sign In →</button>
       <div class="auth-msg" id="loginMsg"></div>
     </div>
-
-    <!-- Register -->
-    <div id="formRegister" style="display:none">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input class="form-input" type="email" id="regEmail" placeholder="you@example.com" autocomplete="email"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input class="form-input" type="password" id="regPass" placeholder="Min. 6 characters" autocomplete="new-password"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Confirm Password</label>
-        <input class="form-input" type="password" id="regPassConfirm" placeholder="Repeat password"/>
-      </div>
-      <button class="btn-full" id="registerBtn" onclick="doRegister()">Create Account →</button>
-      <div class="auth-msg" id="registerMsg"></div>
+    <div id="formReg" style="display:none">
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="regEmail" placeholder="you@example.com"/></div>
+      <div class="form-group"><label class="form-label">Password</label><input class="form-input" type="password" id="regPass" placeholder="Min. 6 characters"/></div>
+      <div class="form-group"><label class="form-label">Confirm</label><input class="form-input" type="password" id="regConf" placeholder="Repeat password"/></div>
+      <button class="btn-full" id="regBtn" onclick="doRegister()">Create Account →</button>
+      <div class="auth-msg" id="regMsg"></div>
     </div>
   </div>
 </div>
 
-<!-- ══════════════════ HEADER ══════════════════ -->
-<div id="header">
-  <div class="header-logo" onclick="goHome()">
-    <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
+<!-- ══════ BOOKMARKS PANEL ══════ -->
+<div id="bookmarks-panel">
+  <div class="panel-header">
+    <span>⭐ Bookmarks</span>
+    <button class="panel-close" onclick="toggleBookmarks()">✕</button>
   </div>
-  <div class="header-nav" id="headerNav">
-    <button class="btn-ghost" onclick="openModal()">Sign In</button>
-    <button class="btn-primary" onclick="openModal(); switchTab('register')">Register</button>
-  </div>
-</div>
-
-<!-- ══════════════════ HOME PAGE ══════════════════ -->
-<div id="home-page">
-  <main>
-    <div class="main-logo">
-      <div class="main-logo-text">
-        <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
-      </div>
-      <div class="main-logo-sub">private · uncensored · fast</div>
-    </div>
-
-    <div class="search-wrapper">
-      <input class="search-input" type="text" id="homeInput" placeholder="Search the web privately..." autocomplete="off"/>
-      <button class="search-go" onclick="doSearch()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-      </button>
-    </div>
-
-    <div class="home-buttons">
-      <button class="btn-ghost" onclick="doSearch()">Search</button>
-      <button class="btn-ghost" onclick="feelingLucky()">I'm Feeling Lucky</button>
-    </div>
-  </main>
-</div>
-
-<!-- ══════════════════ RESULTS PAGE ══════════════════ -->
-<div id="results-page">
-  <div class="results-bar">
-    <div class="results-logo-small" onclick="goHome()">
-      <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span>
-    </div>
-    <div class="results-input-wrap">
-      <input class="results-input" type="text" id="resultsInput" autocomplete="off"/>
-      <button class="results-search-icon" onclick="doSearch()">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <div class="results-body">
-    <div class="spinner" id="spinner"></div>
-    <div class="results-meta" id="resultsMeta"></div>
-    <div id="resultsList"></div>
+  <div class="bookmarks-list" id="bookmarks-list">
+    <div class="empty-state">No bookmarks yet.<br>Click ☆ to save a page.</div>
   </div>
 </div>
 
-<!-- ══════════════════ FOOTER ══════════════════ -->
-<footer>
-  <span>Maths Proxy · private browsing</span>
-  <div>
-    <a href="#">Privacy</a>
-    <a href="#">Terms</a>
+<!-- ══════ HISTORY PANEL ══════ -->
+<div id="history-panel">
+  <div class="panel-header">
+    <span>🕐 History</span>
+    <button class="panel-close" onclick="toggleHistory()">✕</button>
   </div>
-</footer>
+  <div class="bookmarks-list" id="history-list">
+    <div class="empty-state">No history yet.</div>
+  </div>
+</div>
 
-<!-- ══════════════════ SCRIPT ══════════════════ -->
+<!-- ══════ CHROME ══════ -->
+<div id="chrome">
+  <!-- Tab bar -->
+  <div id="tab-bar">
+    <!-- tabs injected here -->
+    <div id="new-tab-btn" onclick="newTab()" title="New tab">+</div>
+  </div>
+
+  <!-- Nav bar -->
+  <div id="nav-bar">
+    <button class="nav-btn" id="btn-back" onclick="goBack()" title="Back" disabled>&#8592;</button>
+    <button class="nav-btn" id="btn-fwd" onclick="goFwd()" title="Forward" disabled>&#8594;</button>
+    <button class="nav-btn" id="btn-reload" onclick="reloadTab()" title="Reload">&#8635;</button>
+    <button class="nav-btn" onclick="goHome()" title="Home">⌂</button>
+
+    <div id="url-wrap">
+      <span id="url-icon">🔒</span>
+      <input id="url-input" type="text" placeholder="Search or enter URL..." spellcheck="false"
+        onkeydown="if(event.key==='Enter') navigate(this.value)"
+        onfocus="this.select()"/>
+      <button id="url-go" onclick="navigate(document.getElementById('url-input').value)">↵</button>
+    </div>
+
+    <button class="nav-btn" id="bookmark-btn" onclick="toggleBookmark()" title="Bookmark">☆</button>
+    <button class="nav-btn" onclick="toggleHistory()" title="History">🕐</button>
+    <button class="nav-btn" onclick="toggleBookmarks()" title="Bookmarks">⭐</button>
+
+    <div id="auth-area">
+      <button class="hdr-btn" onclick="openModal()">Sign In</button>
+      <button class="hdr-btn primary" onclick="openModal(); switchTab('register')">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ CONTENT AREA ══════ -->
+<div id="content-area"></div>
+
+<!-- ══════ SCRIPT ══════ -->
 <script>
-  // ── Supabase ──────────────────────────────────────────
-  const SUPABASE_URL  = 'https://hsmfjpetvcsgkpkwpdjr.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzbWZqcGV0dmNzZ2twa3dwZGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NDc0MzEsImV4cCI6MjA3OTMyMzQzMX0.IBiJtUJBPyjNwGowfgnlfrbHpb46C43NmYY3O9rEFqQ';
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+// ── Supabase ───────────────────────────────────────────────
+const sb = supabase.createClient(
+  'https://hsmfjpetvcsgkpkwpdjr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzbWZqcGV0dmNzZ2twa3dwZGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NDc0MzEsImV4cCI6MjA3OTMyMzQzMX0.IBiJtUJBPyjNwGowfgnlfrbHpb46C43NmYY3O9rEFqQ'
+);
 
-  let currentUser = null;
+sb.auth.getSession().then(({data:{session}}) => { if(session?.user) setUser(session.user); });
+sb.auth.onAuthStateChange((_,s) => s?.user ? setUser(s.user) : clearUser());
 
-  // Check session on load
-  sb.auth.getSession().then(({ data: { session } }) => {
-    if (session?.user) setUser(session.user);
+function setUser(u) {
+  document.getElementById('auth-area').innerHTML = `
+    <div class="user-pill" onclick="doSignOut()" title="Sign out">
+      <div class="u-avatar">${u.email[0].toUpperCase()}</div>
+      <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</span>
+    </div>`;
+  closeModal();
+}
+function clearUser() {
+  document.getElementById('auth-area').innerHTML = `
+    <button class="hdr-btn" onclick="openModal()">Sign In</button>
+    <button class="hdr-btn primary" onclick="openModal(); switchTab('register')">Register</button>`;
+}
+async function doSignOut() { if(confirm('Sign out?')) await sb.auth.signOut(); }
+
+// Modal
+function openModal() { document.getElementById('authModal').classList.add('open'); }
+function closeModal() { document.getElementById('authModal').classList.remove('open'); }
+document.getElementById('authModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeModal(); });
+function switchTab(t) {
+  document.getElementById('tabLogin').classList.toggle('active', t==='login');
+  document.getElementById('tabReg').classList.toggle('active', t==='register');
+  document.getElementById('formLogin').style.display = t==='login' ? '' : 'none';
+  document.getElementById('formReg').style.display = t==='register' ? '' : 'none';
+}
+function showMsg(id,msg,type) { const el=document.getElementById(id); el.textContent=msg; el.className='auth-msg '+type; }
+
+async function doLogin() {
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  const btn=document.getElementById('loginBtn');
+  if(!email||!pass) return showMsg('loginMsg','Fill in all fields.','error');
+  btn.disabled=true; btn.textContent='Signing in…';
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  btn.disabled=false; btn.textContent='Sign In →';
+  if(error) showMsg('loginMsg',error.message,'error');
+}
+async function doRegister() {
+  const email=document.getElementById('regEmail').value.trim();
+  const pass=document.getElementById('regPass').value;
+  const conf=document.getElementById('regConf').value;
+  const btn=document.getElementById('regBtn');
+  if(!email||!pass) return showMsg('regMsg','Fill in all fields.','error');
+  if(pass!==conf) return showMsg('regMsg','Passwords do not match.','error');
+  if(pass.length<6) return showMsg('regMsg','Min. 6 characters.','error');
+  btn.disabled=true; btn.textContent='Creating…';
+  const {error}=await sb.auth.signUp({email,password:pass});
+  btn.disabled=false; btn.textContent='Create Account →';
+  if(error) showMsg('regMsg',error.message,'error');
+  else showMsg('regMsg','Check your email to confirm!','success');
+}
+['loginEmail','loginPass'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); }));
+['regEmail','regPass','regConf'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doRegister(); }));
+
+// ── Tabs engine ────────────────────────────────────────────
+let tabs = [];
+let activeTabId = null;
+let tabIdCounter = 0;
+
+function genId() { return ++tabIdCounter; }
+
+function newTab(url) {
+  const id = genId();
+  const tab = {
+    id,
+    title: 'New Tab',
+    favicon: '🔍',
+    url: url || '',
+    type: 'home', // 'home' | 'search' | 'proxy'
+    history: [],
+    historyIdx: -1,
+  };
+  tabs.push(tab);
+  renderTabBar();
+  activateTab(id);
+  if (url) navigateTab(id, url);
+  return id;
+}
+
+function closeTab(id, e) {
+  e && e.stopPropagation();
+  const idx = tabs.findIndex(t=>t.id===id);
+  tabs = tabs.filter(t=>t.id!==id);
+
+  // Remove page element
+  const el = document.getElementById('page-'+id);
+  if (el) el.remove();
+
+  if (tabs.length === 0) { newTab(); return; }
+
+  // Activate adjacent tab
+  const nextIdx = Math.min(idx, tabs.length-1);
+  activateTab(tabs[nextIdx].id);
+}
+
+function activateTab(id) {
+  activeTabId = id;
+  // Hide all pages, show current
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById('page-'+id);
+  if (page) page.classList.add('active');
+  renderTabBar();
+  syncNavBar();
+}
+
+function renderTabBar() {
+  const bar = document.getElementById('tab-bar');
+  // Remove existing tab elements
+  bar.querySelectorAll('.tab').forEach(el => el.remove());
+
+  tabs.forEach(tab => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (tab.id === activeTabId ? ' active' : '');
+    el.id = 'tab-el-'+tab.id;
+    el.innerHTML = `
+      <span class="tab-favicon">${tab.favicon}</span>
+      <span class="tab-title">${esc(tab.title)}</span>
+      <span class="tab-close" onclick="closeTab(${tab.id},event)">✕</span>
+    `;
+    el.addEventListener('click', () => activateTab(tab.id));
+    bar.insertBefore(el, document.getElementById('new-tab-btn'));
   });
+}
 
-  sb.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) setUser(session.user);
-    else clearUser();
-  });
+function getActiveTab() { return tabs.find(t=>t.id===activeTabId); }
 
-  function setUser(user) {
-    currentUser = user;
-    const initial = (user.email || '?')[0].toUpperCase();
-    document.getElementById('headerNav').innerHTML = `
-      <div class="user-chip" onclick="doSignOut()" title="Click to sign out">
-        <div class="user-avatar">${initial}</div>
-        <span class="user-email">${user.email}</span>
+function syncNavBar() {
+  const tab = getActiveTab();
+  if (!tab) return;
+
+  document.getElementById('url-input').value = tab.url || '';
+  document.getElementById('btn-back').disabled = tab.historyIdx <= 0;
+  document.getElementById('btn-fwd').disabled = tab.historyIdx >= tab.history.length - 1;
+
+  // Bookmark button
+  const bms = getBookmarks();
+  const isBookmarked = bms.some(b => b.url === tab.url);
+  const bbtn = document.getElementById('bookmark-btn');
+  bbtn.textContent = isBookmarked ? '★' : '☆';
+  bbtn.classList.toggle('bookmarked', isBookmarked);
+}
+
+// ── Navigation ─────────────────────────────────────────────
+function navigate(input) {
+  if (!input.trim()) return;
+  const tab = getActiveTab();
+  if (!tab) return;
+
+  // Determine if URL or search query
+  let url = input.trim();
+  if (!url.startsWith('http') && !url.includes('.')) {
+    // It's a search query
+    doSearch(url);
+    return;
+  }
+  if (!url.startsWith('http')) url = 'https://' + url;
+  navigateTab(tab.id, url);
+}
+
+function navigateTab(id, url) {
+  const tab = tabs.find(t=>t.id===id);
+  if (!tab) return;
+
+  tab.url = url;
+  tab.type = 'proxy';
+
+  // Push to tab history
+  if (tab.history[tab.historyIdx] !== url) {
+    tab.history = tab.history.slice(0, tab.historyIdx + 1);
+    tab.history.push(url);
+    tab.historyIdx = tab.history.length - 1;
+  }
+
+  addToHistory(url, tab.title);
+
+  // Get or create page
+  let page = document.getElementById('page-'+id);
+  if (!page) {
+    page = createTabPage(id);
+  }
+
+  // Show proxy view
+  showProxyPage(id, url);
+  if (id === activeTabId) syncNavBar();
+}
+
+function createTabPage(id) {
+  const page = document.createElement('div');
+  page.className = 'tab-page';
+  page.id = 'page-'+id;
+  page.innerHTML = buildHomePage(id);
+  document.getElementById('content-area').appendChild(page);
+  if (id === activeTabId) page.classList.add('active');
+  return page;
+}
+
+function buildHomePage(id) {
+  return `<div class="home-page" id="home-${id}">
+    <div class="logo-wrap">
+      <div class="logo-big"><span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span></div>
+      <div class="logo-sub">private · fast · unrestricted</div>
+    </div>
+    <div class="home-search-wrap">
+      <input class="home-search" type="text" placeholder="Search or enter a URL..." autocomplete="off"
+        onkeydown="if(event.key==='Enter') homeSearch(${id},this.value)"
+        oninput="document.getElementById('url-input').value=this.value"/>
+      <button class="home-search-go" onclick="homeSearch(${id},this.previousElementSibling.value)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+    </div>
+    <div class="home-btns">
+      <button class="home-btn" onclick="homeSearch(${id},document.querySelector('#home-${id} .home-search').value)">Search</button>
+      <button class="home-btn" onclick="luckySearch(${id})">I'm Feeling Lucky</button>
+    </div>
+    <div class="quick-links">
+      <div class="quick-link" onclick="navigateTab(${id},'https://wikipedia.org')"><div class="quick-link-icon">📖</div><span>Wikipedia</span></div>
+      <div class="quick-link" onclick="navigateTab(${id},'https://github.com')"><div class="quick-link-icon">💻</div><span>GitHub</span></div>
+      <div class="quick-link" onclick="navigateTab(${id},'https://reddit.com')"><div class="quick-link-icon">🤖</div><span>Reddit</span></div>
+      <div class="quick-link" onclick="navigateTab(${id},'https://youtube.com')"><div class="quick-link-icon">▶️</div><span>YouTube</span></div>
+      <div class="quick-link" onclick="navigateTab(${id},'https://news.ycombinator.com')"><div class="quick-link-icon">🔥</div><span>HN</span></div>
+      <div class="quick-link" onclick="navigateTab(${id},'https://translate.google.com')"><div class="quick-link-icon">🌐</div><span>Translate</span></div>
+    </div>
+  </div>`;
+}
+
+function homeSearch(tabId, value) {
+  if (!value.trim()) return;
+  const url = document.getElementById('url-input');
+  url.value = value;
+  navigate(value);
+}
+
+// ── Search ─────────────────────────────────────────────────
+function doSearch(q) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  tab.type = 'search';
+  tab.url = '?q=' + encodeURIComponent(q);
+  tab.title = q;
+
+  document.getElementById('url-input').value = q;
+  updateTabEl(tab.id, { title: q, favicon: '🔍' });
+
+  let page = document.getElementById('page-'+tab.id);
+  if (!page) page = createTabPage(tab.id);
+
+  // Clear page and show results container
+  page.innerHTML = `
+    <div class="results-page visible" id="results-${tab.id}">
+      <div class="results-body">
+        <div id="results-meta-${tab.id}" class="results-meta"></div>
+        <div class="search-spinner" id="spinner-${tab.id}" style="display:block"></div>
+        <div id="results-list-${tab.id}"></div>
       </div>
-    `;
-    closeModal();
-  }
+    </div>`;
 
-  function clearUser() {
-    currentUser = null;
-    document.getElementById('headerNav').innerHTML = `
-      <button class="btn-ghost" onclick="openModal()">Sign In</button>
-      <button class="btn-primary" onclick="openModal(); switchTab('register')">Register</button>
-    `;
-  }
+  startProgress();
 
-  async function doSignOut() {
-    if (!confirm('Sign out?')) return;
-    await sb.auth.signOut();
-  }
-
-  // ── Modal ──────────────────────────────────────────────
-  function openModal() {
-    document.getElementById('authModal').classList.add('open');
-  }
-  function closeModal() {
-    document.getElementById('authModal').classList.remove('open');
-  }
-  document.getElementById('authModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeModal();
-  });
-
-  function switchTab(tab) {
-    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
-    document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
-    document.getElementById('formLogin').style.display = tab === 'login' ? '' : 'none';
-    document.getElementById('formRegister').style.display = tab === 'register' ? '' : 'none';
-  }
-
-  function showMsg(id, msg, type) {
-    const el = document.getElementById(id);
-    el.textContent = msg;
-    el.className = `auth-msg ${type}`;
-  }
-
-  async function doLogin() {
-    const email = document.getElementById('loginEmail').value.trim();
-    const pass  = document.getElementById('loginPass').value;
-    const btn   = document.getElementById('loginBtn');
-    if (!email || !pass) return showMsg('loginMsg', 'Please fill in all fields.', 'error');
-    btn.disabled = true;
-    btn.textContent = 'Signing in…';
-    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-    btn.disabled = false;
-    btn.textContent = 'Sign In →';
-    if (error) showMsg('loginMsg', error.message, 'error');
-    else showMsg('loginMsg', 'Welcome back!', 'success');
-  }
-
-  async function doRegister() {
-    const email = document.getElementById('regEmail').value.trim();
-    const pass  = document.getElementById('regPass').value;
-    const conf  = document.getElementById('regPassConfirm').value;
-    const btn   = document.getElementById('registerBtn');
-    if (!email || !pass) return showMsg('registerMsg', 'Please fill in all fields.', 'error');
-    if (pass !== conf) return showMsg('registerMsg', 'Passwords do not match.', 'error');
-    if (pass.length < 6) return showMsg('registerMsg', 'Password must be at least 6 characters.', 'error');
-    btn.disabled = true;
-    btn.textContent = 'Creating account…';
-    const { error } = await sb.auth.signUp({ email, password: pass });
-    btn.disabled = false;
-    btn.textContent = 'Create Account →';
-    if (error) showMsg('registerMsg', error.message, 'error');
-    else showMsg('registerMsg', 'Account created! Check your email to confirm.', 'success');
-  }
-
-  // Enter key on login/register inputs
-  ['loginEmail','loginPass'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  });
-  ['regEmail','regPass','regPassConfirm'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
-  });
-
-  // ── Navigation ─────────────────────────────────────────
-  function goHome() {
-    document.getElementById('home-page').style.display = '';
-    document.getElementById('results-page').style.display = 'none';
-    document.getElementById('homeInput').focus();
-  }
-
-  // ── Search ─────────────────────────────────────────────
-  const homeInput    = document.getElementById('homeInput');
-  const resultsInput = document.getElementById('resultsInput');
-
-  homeInput.addEventListener('keydown',    e => { if (e.key === 'Enter') doSearch(); });
-  resultsInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
-
-  function doSearch() {
-    const q = (homeInput.value || resultsInput.value).trim();
-    if (!q) return;
-
-    homeInput.value    = q;
-    resultsInput.value = q;
-
-    document.getElementById('home-page').style.display    = 'none';
-    document.getElementById('results-page').style.display = 'flex';
-
-    const spinner = document.getElementById('spinner');
-    const list    = document.getElementById('resultsList');
-    const meta    = document.getElementById('resultsMeta');
-
-    spinner.style.display = 'block';
-    list.innerHTML = '';
-    meta.textContent = '';
-
-    fetch(`/search?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
-      .then(data => {
-        spinner.style.display = 'none';
-
-        if (!data.results || data.results.length === 0) {
-          list.innerHTML = `<p style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;">No results found for "<strong style="color:var(--text)">${q}</strong>".</p>`;
-          return;
-        }
-
-        meta.textContent = `≈ ${data.results.length} results`;
-
-        data.results.forEach((item, i) => {
-          const card = document.createElement('div');
-          card.className = 'result-card';
-          card.style.animationDelay = `${i * 0.045}s`;
-
-          let domain = '';
-          try { domain = new URL(item.url).hostname; } catch {}
-
-          card.innerHTML = `
-            <div class="result-domain">🔒 ${domain || item.display || ''}</div>
-            <a class="result-title" href="/proxy?url=${encodeURIComponent(item.url)}" target="_blank">${escHtml(item.title)}</a>
-            <div class="result-snippet">${escHtml(item.snippet)}</div>
-          `;
-          list.appendChild(card);
-        });
-      })
-      .catch(err => {
-        spinner.style.display = 'none';
-        list.innerHTML = `<p style="color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:13px;">Error: ${err.message}</p>`;
+  fetch(`/search?q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(data => {
+      endProgress();
+      const list = document.getElementById('results-list-'+tab.id);
+      const meta = document.getElementById('results-meta-'+tab.id);
+      const spinner = document.getElementById('spinner-'+tab.id);
+      if (spinner) spinner.style.display = 'none';
+      if (!data.results || !data.results.length) {
+        list.innerHTML = `<p style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px">No results for "<strong style="color:var(--text)">${esc(q)}</strong>".</p>`;
+        return;
+      }
+      meta.textContent = `≈ ${data.results.length} results`;
+      data.results.forEach((item, i) => {
+        let domain = '';
+        try { domain = new URL(item.url).hostname; } catch {}
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.style.animationDelay = (i*0.04)+'s';
+        card.innerHTML = `
+          <div class="result-domain">🔒 ${esc(domain)}</div>
+          <div class="result-title">${esc(item.title)}</div>
+          <div class="result-snippet">${esc(item.snippet)}</div>`;
+        card.onclick = () => navigateTab(tab.id, item.url);
+        list.appendChild(card);
       });
-  }
+    })
+    .catch(err => {
+      endProgress();
+      const list = document.getElementById('results-list-'+tab.id);
+      if (list) list.innerHTML = `<p style="color:var(--accent);font-size:13px">Error: ${esc(err.message)}</p>`;
+    });
+}
 
-  function feelingLucky() {
-    const q = homeInput.value.trim();
-    if (!q) return;
-    fetch(`/search?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.results?.length > 0) {
-          window.open(`/proxy?url=${encodeURIComponent(data.results[0].url)}`, '_blank');
-        }
-      });
-  }
+function luckySearch(tabId) {
+  const q = document.querySelector(`#home-${tabId} .home-search`)?.value?.trim();
+  if (!q) return;
+  fetch(`/search?q=${encodeURIComponent(q)}`)
+    .then(r=>r.json())
+    .then(data => {
+      if (data.results?.length) navigateTab(tabId, data.results[0].url);
+    });
+}
 
-  function escHtml(str) {
-    return String(str)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;');
-  }
+// ── Proxy page ─────────────────────────────────────────────
+function showProxyPage(tabId, url) {
+  const tab = tabs.find(t=>t.id===tabId);
+  let page = document.getElementById('page-'+tabId);
+  if (!page) page = createTabPage(tabId);
 
-  // ── Scroll header effect ───────────────────────────────
-  window.addEventListener('scroll', () => {
-    document.getElementById('header').classList.toggle('scrolled', window.scrollY > 10);
-  });
+  startProgress();
+
+  page.innerHTML = `
+    <div class="proxy-page visible" id="proxy-${tabId}" style="position:relative">
+      <div class="proxy-loading visible" id="loading-${tabId}">
+        <div class="load-spinner"></div>
+        <div class="load-url">${esc(url)}</div>
+      </div>
+      <div class="proxy-frame-wrap">
+        <iframe class="proxy-frame" id="frame-${tabId}" src="/proxy?url=${encodeURIComponent(url)}"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+          onload="onFrameLoad(${tabId})"
+          onerror="onFrameError(${tabId})">
+        </iframe>
+      </div>
+    </div>`;
+}
+
+function onFrameLoad(tabId) {
+  endProgress();
+  const loading = document.getElementById('loading-'+tabId);
+  if (loading) loading.classList.remove('visible');
+
+  // Try to get title from iframe
+  try {
+    const frame = document.getElementById('frame-'+tabId);
+    const title = frame.contentDocument?.title || '';
+    if (title) {
+      const tab = tabs.find(t=>t.id===tabId);
+      if (tab) {
+        tab.title = title.slice(0, 40);
+        updateTabEl(tabId, { title: tab.title });
+        addToHistory(tab.url, tab.title);
+      }
+    }
+  } catch {}
+
+  if (tabId === activeTabId) syncNavBar();
+}
+
+function onFrameError(tabId) {
+  endProgress();
+  const loading = document.getElementById('loading-'+tabId);
+  if (loading) loading.classList.remove('visible');
+}
+
+// ── Back / Forward ─────────────────────────────────────────
+function goBack() {
+  const tab = getActiveTab();
+  if (!tab || tab.historyIdx <= 0) return;
+  tab.historyIdx--;
+  const url = tab.history[tab.historyIdx];
+  tab.url = url;
+  showProxyPage(tab.id, url);
+  syncNavBar();
+}
+
+function goFwd() {
+  const tab = getActiveTab();
+  if (!tab || tab.historyIdx >= tab.history.length-1) return;
+  tab.historyIdx++;
+  const url = tab.history[tab.historyIdx];
+  tab.url = url;
+  showProxyPage(tab.id, url);
+  syncNavBar();
+}
+
+function reloadTab() {
+  const tab = getActiveTab();
+  if (!tab || !tab.url || tab.type === 'home') return;
+  if (tab.type === 'search') {
+    const q = new URLSearchParams(tab.url.slice(1)).get('q');
+    if (q) doSearch(q);
+  } else {
+    showProxyPage(tab.id, tab.url);
+  }
+}
+
+function goHome() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  tab.type = 'home';
+  tab.url = '';
+  tab.title = 'New Tab';
+  let page = document.getElementById('page-'+tab.id);
+  if (!page) page = createTabPage(tab.id);
+  page.innerHTML = buildHomePage(tab.id);
+  updateTabEl(tab.id, { title: 'New Tab', favicon: '🔍' });
+  document.getElementById('url-input').value = '';
+  syncNavBar();
+}
+
+// ── Bookmarks ──────────────────────────────────────────────
+function getBookmarks() {
+  try { return JSON.parse(localStorage.getItem('mp_bookmarks') || '[]'); } catch { return []; }
+}
+function saveBookmarks(bms) { localStorage.setItem('mp_bookmarks', JSON.stringify(bms)); }
+
+function toggleBookmark() {
+  const tab = getActiveTab();
+  if (!tab || !tab.url) return;
+  let bms = getBookmarks();
+  const existing = bms.findIndex(b => b.url === tab.url);
+  if (existing >= 0) {
+    bms.splice(existing, 1);
+  } else {
+    bms.unshift({ url: tab.url, title: tab.title || tab.url, favicon: tab.favicon || '🔍' });
+  }
+  saveBookmarks(bms);
+  renderBookmarks();
+  syncNavBar();
+}
+
+function renderBookmarks() {
+  const list = document.getElementById('bookmarks-list');
+  const bms = getBookmarks();
+  if (!bms.length) {
+    list.innerHTML = '<div class="empty-state">No bookmarks yet.<br>Click ☆ to save a page.</div>';
+    return;
+  }
+  list.innerHTML = bms.map((b, i) => `
+    <div class="bookmark-item">
+      <span class="bm-icon">${b.favicon || '🔍'}</span>
+      <span class="bm-title" onclick="navigateBookmark('${esc(b.url)}')">${esc(b.title)}</span>
+      <span class="bm-del" onclick="deleteBookmark(${i})">✕</span>
+    </div>`).join('');
+}
+
+function navigateBookmark(url) {
+  toggleBookmarks();
+  const tab = getActiveTab();
+  if (tab) navigateTab(tab.id, url);
+}
+
+function deleteBookmark(i) {
+  const bms = getBookmarks();
+  bms.splice(i, 1);
+  saveBookmarks(bms);
+  renderBookmarks();
+  syncNavBar();
+}
+
+function toggleBookmarks() {
+  document.getElementById('bookmarks-panel').classList.toggle('open');
+  renderBookmarks();
+}
+
+// ── History ────────────────────────────────────────────────
+function getHistory() {
+  try { return JSON.parse(sessionStorage.getItem('mp_history') || '[]'); } catch { return []; }
+}
+function addToHistory(url, title) {
+  if (!url) return;
+  let hist = getHistory();
+  hist = hist.filter(h => h.url !== url);
+  hist.unshift({ url, title: title || url, time: Date.now() });
+  hist = hist.slice(0, 100);
+  sessionStorage.setItem('mp_history', JSON.stringify(hist));
+}
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const hist = getHistory();
+  if (!hist.length) {
+    list.innerHTML = '<div class="empty-state">No history yet.</div>';
+    return;
+  }
+  list.innerHTML = hist.map(h => `
+    <div class="bookmark-item">
+      <span class="bm-icon">🕐</span>
+      <span class="bm-title" onclick="navigateHistory('${esc(h.url)}')">${esc(h.title || h.url)}</span>
+    </div>`).join('');
+}
+function navigateHistory(url) {
+  toggleHistory();
+  const tab = getActiveTab();
+  if (tab) navigateTab(tab.id, url);
+}
+function toggleHistory() {
+  document.getElementById('history-panel').classList.toggle('open');
+  renderHistory();
+}
+
+// ── Progress bar ───────────────────────────────────────────
+function startProgress() {
+  const p = document.getElementById('progress');
+  p.className = 'loading';
+}
+function endProgress() {
+  const p = document.getElementById('progress');
+  p.className = 'done';
+  setTimeout(() => p.className = '', 600);
+}
+
+// ── Tab helpers ────────────────────────────────────────────
+function updateTabEl(id, { title, favicon }) {
+  const tab = tabs.find(t=>t.id===id);
+  if (!tab) return;
+  if (title !== undefined) tab.title = title;
+  if (favicon !== undefined) tab.favicon = favicon;
+  const el = document.getElementById('tab-el-'+id);
+  if (el) {
+    if (title) el.querySelector('.tab-title').textContent = title.slice(0, 30);
+    if (favicon) el.querySelector('.tab-favicon').textContent = favicon;
+  }
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ───────────────────────────────────────────────────
+newTab();
 </script>
 </body>
 </html>
