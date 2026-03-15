@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Maths Proxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/mp-register.js"></script>
+  <style>
+    :root {
+      --bg:      #08080f;
+      --chrome:  #0d0d1a;
+      --surface: #121222;
+      --card:    #181830;
+      --border:  #1e1e38;
+      --border2: #2a2a4a;
+      --accent:  #e94560;
+      --blue:    #4b8ef0;
+      --green:   #00cfa8;
+      --yellow:  #f0a030;
+      --text:    #eeeef8;
+      --sub:     #7878a0;
+      --muted:   #40405a;
+      --tab-h:   34px;
+      --bar-h:   44px;
+    }
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+    /* ── PROGRESS BAR ── */
+    #progress{position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:9999;width:0;opacity:0;transition:opacity .3s;}
+    #progress.active{opacity:1;animation:prog 1.5s ease infinite;}
+    #progress.done{width:100%!important;opacity:0;transition:width .1s,opacity .4s .1s;}
+    @keyframes prog{0%{width:0}60%{width:75%}100%{width:90%}}
+
+    /* ── CHROME ── */
+    #chrome{background:var(--chrome);border-bottom:1px solid var(--border);flex-shrink:0;user-select:none;}
+
+    /* Tab bar */
+    #tab-bar{display:flex;align-items:flex-end;padding:6px 6px 0;gap:1px;overflow-x:auto;scrollbar-width:none;min-height:calc(var(--tab-h) + 6px);}
+    #tab-bar::-webkit-scrollbar{display:none;}
+    .tab{display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;height:var(--tab-h);min-width:120px;max-width:200px;background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:6px 6px 0 0;cursor:pointer;font-size:12px;color:var(--sub);transition:background .15s,color .15s;flex-shrink:0;}
+    .tab:hover{background:var(--card);color:var(--text);}
+    .tab.active{background:var(--bg);color:var(--text);border-color:var(--border2);z-index:2;}
+    .tab-icon{font-size:12px;flex-shrink:0;width:14px;text-align:center;}
+    .tab-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
+    .tab-x{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:0;transition:opacity .15s,background .15s;flex-shrink:0;color:var(--sub);}
+    .tab:hover .tab-x,.tab.active .tab-x{opacity:1;}
+    .tab-x:hover{background:rgba(233,69,96,.25);color:var(--accent);}
+    #new-tab-btn{width:26px;height:var(--tab-h);display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;border-radius:5px;font-size:17px;transition:color .15s,background .15s;flex-shrink:0;}
+    #new-tab-btn:hover{color:var(--text);background:var(--surface);}
+
+    /* Nav bar */
+    #nav-bar{display:flex;align-items:center;gap:4px;padding:5px 8px;height:var(--bar-h);}
+    .nav-btn{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--sub);cursor:pointer;font-size:14px;transition:background .15s,color .15s;flex-shrink:0;}
+    .nav-btn:hover:not(:disabled){background:var(--surface);color:var(--text);}
+    .nav-btn:disabled{opacity:.3;cursor:default;}
+
+    /* URL bar */
+    #url-wrap{flex:1;position:relative;display:flex;align-items:center;}
+    #url-lock{position:absolute;left:10px;font-size:12px;color:var(--green);pointer-events:none;}
+    #url-input{width:100%;height:30px;background:var(--surface);border:1.5px solid var(--border);border-radius:15px;padding:0 34px 0 28px;font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;}
+    #url-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,142,240,.12);background:var(--card);}
+    #url-input::placeholder{color:var(--muted);}
+    #url-go{position:absolute;right:8px;background:none;border:none;color:var(--sub);cursor:pointer;font-size:13px;transition:color .15s;}
+    #url-go:hover{color:var(--blue);}
+
+    #bm-btn{font-size:15px;transition:color .2s,transform .15s;}
+    #bm-btn.on{color:var(--yellow);}
+    #bm-btn:hover{transform:scale(1.2);}
+
+    /* Auth area */
+    #auth-area{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+    .hbtn{height:26px;padding:0 11px;border-radius:5px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--sub);transition:all .15s;}
+    .hbtn:hover{border-color:var(--blue);color:var(--text);}
+    .hbtn.p{background:var(--accent);border-color:var(--accent);color:#fff;}
+    .hbtn.p:hover{background:#ff2d4e;}
+    .upill{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:3px 10px 3px 4px;cursor:pointer;font-size:12px;color:var(--sub);transition:border-color .15s;}
+    .upill:hover{border-color:var(--accent);}
+    .uav{width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--blue));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;}
+
+    /* ── CONTENT AREA ── */
+    #content-area{flex:1;overflow:hidden;position:relative;}
+    .tab-page{display:none;width:100%;height:100%;flex-direction:column;}
+    .tab-page.active{display:flex;}
+
+    /* ── HOME PAGE ── */
+    .home-page{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto;background:var(--bg);position:relative;}
+    .home-page::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(75,142,240,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(75,142,240,.03) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;}
+    .logo-big{font-size:clamp(40px,8vw,70px);font-weight:600;letter-spacing:-2px;line-height:1;margin-bottom:6px;}
+    .logo-big .m{color:#4b8ef0}.logo-big .a{color:#e94560}.logo-big .t{color:#f0a030}.logo-big .h{color:#4b8ef0}.logo-big .s{color:#00cfa8}.logo-big .sp{display:inline-block;width:14px}.logo-big .p{color:#e94560}.logo-big .r{color:#f0a030}.logo-big .o{color:#4b8ef0}.logo-big .x{color:#00cfa8}.logo-big .y{color:#e94560}
+    .logo-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-bottom:28px;}
+    .home-search-wrap{width:100%;max-width:560px;position:relative;margin-bottom:12px;}
+    .home-search{width:100%;padding:13px 48px 13px 20px;background:var(--surface);border:1.5px solid var(--border2);border-radius:26px;font-size:15px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;}
+    .home-search:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(233,69,96,.1),0 8px 32px rgba(0,0,0,.3);}
+    .home-search::placeholder{color:var(--muted);}
+    .home-go{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;transition:background .2s,transform .15s;}
+    .home-go:hover{background:#ff2d4e;transform:translateY(-50%) scale(1.08);}
+    .home-btns{display:flex;gap:8px;margin-bottom:28px;}
+    .home-btn{padding:7px 16px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--sub);font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s;}
+    .home-btn:hover{border-color:var(--accent);color:var(--text);}
+    .quick-links{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:520px;}
+    .ql{display:flex;flex-direction:column;align-items:center;gap:5px;width:68px;cursor:pointer;padding:8px 4px;border-radius:10px;transition:background .15s;}
+    .ql:hover{background:var(--surface);}
+    .ql-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface);border:1px solid var(--border);}
+    .ql span{font-size:10px;color:var(--sub);}
+
+    /* ── SW WARNING ── */
+    .sw-warn{background:rgba(240,160,48,.08);border:1px solid rgba(240,160,48,.3);color:var(--yellow);font-size:12px;font-family:'JetBrains Mono',monospace;padding:8px 14px;border-radius:6px;margin-bottom:16px;text-align:center;display:none;}
+
+    /* ── RESULTS ── */
+    .results-page{flex:1;overflow-y:auto;background:var(--bg);}
+    .results-body{padding:20px 24px 60px;max-width:720px;}
+    .results-meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;}
+    .result-card{margin-bottom:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,transform .1s,box-shadow .15s;animation:su .25s ease both;}
+    .result-card:hover{border-color:var(--border2);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,.3);}
+    @keyframes su{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .r-domain{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--green);margin-bottom:3px;}
+    .r-title{font-size:15px;font-weight:500;color:var(--blue);margin-bottom:4px;line-height:1.35;}
+    .r-snippet{font-size:13px;color:var(--sub);line-height:1.6;}
+    .search-spin{display:none;width:28px;height:28px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .65s linear infinite;margin:60px auto;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── PROXY FRAME ── */
+    .proxy-wrap{flex:1;position:relative;overflow:hidden;}
+    .proxy-frame{width:100%;height:100%;border:none;background:#fff;}
+    .proxy-loading{display:none;position:absolute;inset:0;background:var(--bg);align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:10;}
+    .proxy-loading.show{display:flex;}
+    .pl-spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .65s linear infinite;}
+    .pl-url{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+    /* ── SIDE PANELS ── */
+    .side-panel{display:none;position:fixed;top:0;width:290px;height:100%;background:var(--chrome);border-color:var(--border2);border-style:solid;z-index:200;flex-direction:column;animation:si .2s ease;}
+    .side-panel.open{display:flex;}
+    .side-panel.right{right:0;border-left-width:1px;}
+    .side-panel.left{left:0;border-right-width:1px;}
+    @keyframes si{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+    .panel-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
+    .panel-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;transition:color .15s;}
+    .panel-x:hover{color:var(--text);}
+    .panel-list{flex:1;overflow-y:auto;padding:6px;}
+    .pi{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .15s;font-size:13px;}
+    .pi:hover{background:var(--surface);}
+    .pi-ico{font-size:13px;flex-shrink:0;}
+    .pi-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+    .pi-x{opacity:0;color:var(--muted);cursor:pointer;font-size:13px;transition:opacity .15s,color .15s;flex-shrink:0;}
+    .pi:hover .pi-x{opacity:1;}
+    .pi-x:hover{color:var(--accent);}
+    .empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;}
+
+    /* ── AUTH MODAL ── */
+    .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);z-index:500;align-items:center;justify-content:center;}
+    .modal-ov.open{display:flex;}
+    .modal{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:30px 26px;width:100%;max-width:370px;position:relative;animation:pi2 .2s ease;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+    @keyframes pi2{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    .modal-x{position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;transition:color .15s;}
+    .modal-x:hover{color:var(--text);}
+    .modal-logo{text-align:center;font-size:26px;font-weight:600;letter-spacing:-1px;margin-bottom:3px;}
+    .modal-logo .m{color:#4b8ef0}.modal-logo .a{color:#e94560}.modal-logo .t{color:#f0a030}.modal-logo .h{color:#4b8ef0}.modal-logo .s{color:#00cfa8}
+    .modal-tag{text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:22px;}
+    .mtabs{display:flex;background:var(--card);border-radius:7px;padding:3px;margin-bottom:18px;gap:2px;}
+    .mtab{flex:1;padding:7px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;background:none;border:none;color:var(--muted);font-family:'DM Sans',sans-serif;border-radius:5px;transition:all .15s;}
+    .mtab.active{background:var(--accent);color:#fff;}
+    .fg{margin-bottom:12px;}
+    .fl{display:block;font-size:11px;font-weight:600;color:var(--sub);margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+    .fi{width:100%;padding:9px 11px;background:var(--card);border:1.5px solid var(--border2);border-radius:7px;font-size:14px;font-family:'DM Sans',sans-serif;color:var(--text);outline:none;transition:border-color .2s;}
+    .fi:focus{border-color:var(--accent);}
+    .fi::placeholder{color:var(--muted);}
+    .bf{width:100%;padding:10px;background:var(--accent);border:none;border-radius:7px;color:#fff;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:4px;transition:all .15s;}
+    .bf:hover{background:#ff2d4e;transform:translateY(-1px);box-shadow:0 5px 16px rgba(233,69,96,.3);}
+    .bf:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+    .amsg{margin-top:10px;padding:8px 12px;border-radius:6px;font-size:12px;text-align:center;display:none;}
+    .amsg.err{background:rgba(233,69,96,.1);border:1px solid rgba(233,69,96,.25);color:#ff6b7a;display:block;}
+    .amsg.ok{background:rgba(0,207,168,.08);border:1px solid rgba(0,207,168,.25);color:var(--green);display:block;}
+  </style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<!-- ══ AUTH MODAL ══ -->
+<div class="modal-ov" id="authModal">
+  <div class="modal">
+    <button class="modal-x" onclick="closeModal()">✕</button>
+    <div class="modal-logo"><span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span></div>
+    <div class="modal-tag">private · fast · unrestricted</div>
+    <div class="mtabs">
+      <button class="mtab active" id="tLogin" onclick="switchTab('login')">Sign In</button>
+      <button class="mtab" id="tReg" onclick="switchTab('register')">Register</button>
+    </div>
+    <div id="fLogin">
+      <div class="fg"><label class="fl">Email</label><input class="fi" type="email" id="lEmail" placeholder="you@example.com" autocomplete="email"/></div>
+      <div class="fg"><label class="fl">Password</label><input class="fi" type="password" id="lPass" placeholder="••••••••" autocomplete="current-password"/></div>
+      <button class="bf" id="lBtn" onclick="doLogin()">Sign In →</button>
+      <div class="amsg" id="lMsg"></div>
+    </div>
+    <div id="fReg" style="display:none">
+      <div class="fg"><label class="fl">Email</label><input class="fi" type="email" id="rEmail" placeholder="you@example.com"/></div>
+      <div class="fg"><label class="fl">Password</label><input class="fi" type="password" id="rPass" placeholder="Min. 6 characters"/></div>
+      <div class="fg"><label class="fl">Confirm</label><input class="fi" type="password" id="rConf" placeholder="Repeat password"/></div>
+      <button class="bf" id="rBtn" onclick="doRegister()">Create Account →</button>
+      <div class="amsg" id="rMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BOOKMARKS PANEL ══ -->
+<div class="side-panel right" id="bmPanel">
+  <div class="panel-hd"><span>⭐ Bookmarks</span><button class="panel-x" onclick="togglePanel('bm')">✕</button></div>
+  <div class="panel-list" id="bmList"></div>
+</div>
+
+<!-- ══ HISTORY PANEL ══ -->
+<div class="side-panel left" id="histPanel">
+  <div class="panel-hd"><span>🕐 History</span><button class="panel-x" onclick="togglePanel('hist')">✕</button></div>
+  <div class="panel-list" id="histList"></div>
+</div>
+
+<!-- ══ CHROME ══ -->
+<div id="chrome">
+  <div id="tab-bar">
+    <div id="new-tab-btn" onclick="newTab()" title="New tab">+</div>
+  </div>
+  <div id="nav-bar">
+    <button class="nav-btn" id="btnBack" onclick="goBack()" disabled title="Back">&#8592;</button>
+    <button class="nav-btn" id="btnFwd" onclick="goFwd()" disabled title="Forward">&#8594;</button>
+    <button class="nav-btn" id="btnReload" onclick="reloadTab()" title="Reload">&#8635;</button>
+    <button class="nav-btn" onclick="goHome()" title="Home">⌂</button>
+    <div id="url-wrap">
+      <span id="url-lock">🔒</span>
+      <input id="url-input" type="text" placeholder="Search or enter a URL..." spellcheck="false"
+        onkeydown="if(event.key==='Enter')navigate(this.value)"
+        onfocus="this.select()"/>
+      <button id="url-go" onclick="navigate(document.getElementById('url-input').value)">↵</button>
+    </div>
+    <button class="nav-btn" id="bm-btn" onclick="toggleBookmark()" title="Bookmark">☆</button>
+    <button class="nav-btn" onclick="togglePanel('hist')" title="History">🕐</button>
+    <button class="nav-btn" onclick="togglePanel('bm')" title="Bookmarks">⭐</button>
+    <div id="auth-area">
+      <button class="hbtn" onclick="openModal()">Sign In</button>
+      <button class="hbtn p" onclick="openModal();switchTab('register')">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CONTENT AREA ══ -->
+<div id="content-area"></div>
+
+<script>
+// ── Supabase ──────────────────────────────────────────────────
+const sb = supabase.createClient(
+  'https://hsmfjpetvcsgkpkwpdjr.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzbWZqcGV0dmNzZ2twa3dwZGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NDc0MzEsImV4cCI6MjA3OTMyMzQzMX0.IBiJtUJBPyjNwGowfgnlfrbHpb46C43NmYY3O9rEFqQ'
+);
+sb.auth.getSession().then(({data:{session}})=>{ if(session?.user) setUser(session.user); });
+sb.auth.onAuthStateChange((_,s)=>s?.user?setUser(s.user):clearUser());
+
+function setUser(u){
+  document.getElementById('auth-area').innerHTML=`<div class="upill" onclick="doSignOut()" title="Sign out"><div class="uav">${u.email[0].toUpperCase()}</div><span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</span></div>`;
+  closeModal();
+}
+function clearUser(){
+  document.getElementById('auth-area').innerHTML=`<button class="hbtn" onclick="openModal()">Sign In</button><button class="hbtn p" onclick="openModal();switchTab('register')">Register</button>`;
+}
+async function doSignOut(){ if(confirm('Sign out?')) await sb.auth.signOut(); }
+
+function openModal(){ document.getElementById('authModal').classList.add('open'); }
+function closeModal(){ document.getElementById('authModal').classList.remove('open'); }
+document.getElementById('authModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeModal(); });
+function switchTab(t){
+  document.getElementById('tLogin').classList.toggle('active',t==='login');
+  document.getElementById('tReg').classList.toggle('active',t==='register');
+  document.getElementById('fLogin').style.display=t==='login'?'':'none';
+  document.getElementById('fReg').style.display=t==='register'?'':'none';
+}
+function showMsg(id,msg,type){ const el=document.getElementById(id); el.textContent=msg; el.className='amsg '+type; }
+async function doLogin(){
+  const email=document.getElementById('lEmail').value.trim(),pass=document.getElementById('lPass').value,btn=document.getElementById('lBtn');
+  if(!email||!pass) return showMsg('lMsg','Fill all fields.','err');
+  btn.disabled=true; btn.textContent='Signing in…';
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  btn.disabled=false; btn.textContent='Sign In →';
+  if(error) showMsg('lMsg',error.message,'err');
+}
+async function doRegister(){
+  const email=document.getElementById('rEmail').value.trim(),pass=document.getElementById('rPass').value,conf=document.getElementById('rConf').value,btn=document.getElementById('rBtn');
+  if(!email||!pass) return showMsg('rMsg','Fill all fields.','err');
+  if(pass!==conf) return showMsg('rMsg','Passwords do not match.','err');
+  if(pass.length<6) return showMsg('rMsg','Min. 6 characters.','err');
+  btn.disabled=true; btn.textContent='Creating…';
+  const {error}=await sb.auth.signUp({email,password:pass});
+  btn.disabled=false; btn.textContent='Create Account →';
+  if(error) showMsg('rMsg',error.message,'err');
+  else showMsg('rMsg','Check your email to confirm!','ok');
+}
+['lEmail','lPass'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); }));
+['rEmail','rPass','rConf'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') doRegister(); }));
+
+// ── URL encoding ──────────────────────────────────────────────
+const PROXY_PREFIX = '/browse/';
+function encodeUrl(url){ return btoa(unescape(encodeURIComponent(url))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); }
+function decodeUrl(enc){ try{ const b=enc.replace(/-/g,'+').replace(/_/g,'/'); const p=b.length%4?b+'='.repeat(4-b.length%4):b; return decodeURIComponent(escape(atob(p))); }catch{return null;} }
+
+// ── Progress bar ──────────────────────────────────────────────
+function startProgress(){ const p=document.getElementById('progress'); p.className='active'; p.style.width=''; }
+function endProgress(){ const p=document.getElementById('progress'); p.className='done'; setTimeout(()=>{p.className='';p.style.width='0';},600); }
+
+// ── Tab engine ────────────────────────────────────────────────
+let tabs=[], activeId=null, tidx=0;
+function gid(){ return ++tidx; }
+function getTab(id){ return tabs.find(t=>t.id===id); }
+function getActive(){ return getTab(activeId); }
+
+function newTab(url){
+  const id=gid();
+  tabs.push({ id, title:'Maths Proxy', icon:'🔒', url:'', type:'home', hist:[], hidx:-1 });
+  renderTabs();
+  activateTab(id);
+  if(url) navigateTab(id,url);
+  return id;
+}
+
+function closeTab(id,e){
+  e&&e.stopPropagation();
+  const idx=tabs.findIndex(t=>t.id===id);
+  document.getElementById('page-'+id)?.remove();
+  tabs=tabs.filter(t=>t.id!==id);
+  if(!tabs.length){ newTab(); return; }
+  activateTab(tabs[Math.min(idx,tabs.length-1)].id);
+}
+
+function activateTab(id){
+  activeId=id;
+  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id)?.classList.add('active');
+  renderTabs();
+  syncNav();
+}
+
+function renderTabs(){
+  const bar=document.getElementById('tab-bar');
+  bar.querySelectorAll('.tab').forEach(el=>el.remove());
+  tabs.forEach(tab=>{
+    const el=document.createElement('div');
+    el.className='tab'+(tab.id===activeId?' active':'');
+    el.id='tab-el-'+tab.id;
+    el.innerHTML=`<span class="tab-icon">${tab.icon}</span><span class="tab-title">${esc(tab.title)}</span><span class="tab-x" onclick="closeTab(${tab.id},event)">✕</span>`;
+    el.addEventListener('click',()=>activateTab(tab.id));
+    bar.insertBefore(el,document.getElementById('new-tab-btn'));
+  });
+}
+
+function syncNav(){
+  const tab=getActive(); if(!tab) return;
+  document.getElementById('url-input').value=tab.url||'';
+  document.getElementById('btnBack').disabled=tab.hidx<=0;
+  document.getElementById('btnFwd').disabled=tab.hidx>=tab.hist.length-1;
+  const bms=getBM();
+  const on=bms.some(b=>b.url===tab.url);
+  const bb=document.getElementById('bm-btn');
+  bb.textContent=on?'★':'☆'; bb.classList.toggle('on',on);
+}
+
+function updateTabEl(id,{title,icon}){
+  const tab=getTab(id); if(!tab) return;
+  if(title!==undefined) tab.title=title;
+  if(icon!==undefined) tab.icon=icon;
+  const el=document.getElementById('tab-el-'+id);
+  if(el){
+    if(title) el.querySelector('.tab-title').textContent=title.slice(0,30);
+    if(icon) el.querySelector('.tab-icon').textContent=icon;
+  }
+}
+
+// ── Page creation ─────────────────────────────────────────────
+function getOrCreatePage(id){
+  let page=document.getElementById('page-'+id);
+  if(!page){
+    page=document.createElement('div');
+    page.className='tab-page';
+    page.id='page-'+id;
+    if(id===activeId) page.classList.add('active');
+    document.getElementById('content-area').appendChild(page);
+  }
+  return page;
+}
+
+function buildHome(id){
+  return `<div class="home-page" id="home-${id}">
+    <div class="sw-warn" id="sw-warn-${id}">⚠ Service Worker not ready. Some sites may not load correctly.</div>
+    <div class="logo-big"><span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span></div>
+    <div class="logo-sub">private · unrestricted · fast</div>
+    <div class="home-search-wrap">
+      <input class="home-search" type="text" placeholder="Search or enter a URL..." autocomplete="off"
+        onkeydown="if(event.key==='Enter') homeNav(${id},this.value)"
+        oninput="document.getElementById('url-input').value=this.value"/>
+      <button class="home-go" onclick="homeNav(${id},this.previousElementSibling.value)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+    </div>
+    <div class="home-btns">
+      <button class="home-btn" onclick="homeNav(${id},document.querySelector('#home-${id} .home-search').value)">Search</button>
+      <button class="home-btn" onclick="luckySearch(${id})">I'm Feeling Lucky</button>
+    </div>
+    <div class="quick-links">
+      <div class="ql" onclick="navigateTab(${id},'https://wikipedia.org')"><div class="ql-icon">📖</div><span>Wikipedia</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://github.com')"><div class="ql-icon">💻</div><span>GitHub</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://reddit.com')"><div class="ql-icon">🤖</div><span>Reddit</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://youtube.com')"><div class="ql-icon">▶️</div><span>YouTube</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://poki.com')"><div class="ql-icon">🎮</div><span>Poki</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://news.ycombinator.com')"><div class="ql-icon">🔥</div><span>HN</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://translate.google.com')"><div class="ql-icon">🌐</div><span>Translate</span></div>
+      <div class="ql" onclick="navigateTab(${id},'https://twitch.tv')"><div class="ql-icon">🎯</div><span>Twitch</span></div>
+    </div>
+  </div>`;
+}
+
+// ── Navigate ──────────────────────────────────────────────────
+function navigate(input){
+  const q=(input||'').trim(); if(!q) return;
+  const tab=getActive(); if(!tab) return;
+  // URL or search?
+  const looksLikeUrl = q.startsWith('http')||(/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/.test(q)&&!q.includes(' '));
+  if(looksLikeUrl){ let url=q; if(!url.startsWith('http')) url='https://'+url; navigateTab(tab.id,url); }
+  else doSearch(q);
+}
+
+function homeNav(tabId,val){
+  val=(val||'').trim(); if(!val) return;
+  document.getElementById('url-input').value=val;
+  navigate(val);
+}
+
+function navigateTab(id,url){
+  const tab=getTab(id); if(!tab) return;
+  if(!url.startsWith('http')) url='https://'+url;
+  tab.url=url; tab.type='proxy';
+  // Push history
+  if(tab.hist[tab.hidx]!==url){
+    tab.hist=tab.hist.slice(0,tab.hidx+1);
+    tab.hist.push(url); tab.hidx=tab.hist.length-1;
+  }
+  addHist(url, tab.title);
+  showProxyPage(id,url);
+  if(id===activeId) syncNav();
+}
+
+function showProxyPage(id,url){
+  const page=getOrCreatePage(id);
+  startProgress();
+  // Use SW proxy URL
+  const proxyHref = PROXY_PREFIX + encodeUrl(url);
+  page.innerHTML=`
+    <div class="proxy-wrap">
+      <div class="proxy-loading show" id="load-${id}">
+        <div class="pl-spin"></div>
+        <div class="pl-url">${esc(url)}</div>
+      </div>
+      <iframe class="proxy-frame" id="frame-${id}"
+        src="${proxyHref}"
+        onload="onLoad(${id})"
+        onerror="onErr(${id})">
+      </iframe>
+    </div>`;
+}
+
+function onLoad(id){
+  endProgress();
+  document.getElementById('load-'+id)?.classList.remove('show');
+  // Try to get title
+  try{
+    const frame=document.getElementById('frame-'+id);
+    const t=frame.contentDocument?.title;
+    if(t){ const tab=getTab(id); if(tab){ tab.title=t.slice(0,40); updateTabEl(id,{title:tab.title}); } }
+  }catch{}
+  if(id===activeId) syncNav();
+}
+
+function onErr(id){
+  endProgress();
+  document.getElementById('load-'+id)?.classList.remove('show');
+}
+
+// postMessage listener — SW pages post nav events
+window.addEventListener('message',e=>{
+  const d=e.data; if(!d||typeof d!=='object') return;
+  if(d.type==='MP_NAV'&&d.url){
+    // Find which tab
+    const frame=[...document.querySelectorAll('.proxy-frame')].find(f=>f.contentWindow===e.source);
+    const tid=frame?parseInt(frame.id.replace('frame-','')):(activeId);
+    if(tid) navigateTab(tid,d.url);
+  }
+  if(d.type==='MP_TITLE'&&d.title){
+    const frame=[...document.querySelectorAll('.proxy-frame')].find(f=>f.contentWindow===e.source);
+    if(frame){
+      const tid=parseInt(frame.id.replace('frame-',''));
+      updateTabEl(tid,{title:d.title.slice(0,40)});
+      const tab=getTab(tid); if(tab){ tab.title=d.title.slice(0,40); addHist(tab.url,tab.title); }
+    }
+  }
+  if(d.type==='MP_URL'&&d.url){
+    const frame=[...document.querySelectorAll('.proxy-frame')].find(f=>f.contentWindow===e.source);
+    if(frame){
+      const tid=parseInt(frame.id.replace('frame-',''));
+      const tab=getTab(tid); if(tab){ tab.url=d.url; if(tid===activeId) document.getElementById('url-input').value=d.url; }
+    }
+  }
+});
+
+// ── Search ────────────────────────────────────────────────────
+function doSearch(q){
+  const tab=getActive(); if(!tab) return;
+  tab.type='search'; tab.url='?q='+encodeURIComponent(q); tab.title=q;
+  document.getElementById('url-input').value=q;
+  updateTabEl(tab.id,{title:q,icon:'🔍'});
+  const page=getOrCreatePage(tab.id);
+  page.innerHTML=`<div class="results-page"><div class="results-body">
+    <div class="results-meta" id="rmeta-${tab.id}"></div>
+    <div class="search-spin" id="rspin-${tab.id}" style="display:block"></div>
+    <div id="rlist-${tab.id}"></div>
+  </div></div>`;
+  startProgress();
+  fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).then(data=>{
+    endProgress();
+    document.getElementById('rspin-'+tab.id).style.display='none';
+    const list=document.getElementById('rlist-'+tab.id);
+    const meta=document.getElementById('rmeta-'+tab.id);
+    if(!data.results?.length){ list.innerHTML=`<p style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px">No results for "${esc(q)}".</p>`; return; }
+    meta.textContent=`≈ ${data.results.length} results`;
+    data.results.forEach((item,i)=>{
+      let domain=''; try{ domain=new URL(item.url).hostname; }catch{}
+      const card=document.createElement('div');
+      card.className='result-card'; card.style.animationDelay=(i*.04)+'s';
+      card.innerHTML=`<div class="r-domain">🔒 ${esc(domain)}</div><div class="r-title">${esc(item.title)}</div><div class="r-snippet">${esc(item.snippet)}</div>`;
+      card.onclick=()=>navigateTab(tab.id,item.url);
+      list.appendChild(card);
+    });
+  }).catch(err=>{ endProgress(); document.getElementById('rlist-'+tab.id).innerHTML=`<p style="color:var(--accent);font-size:13px">Error: ${esc(err.message)}</p>`; });
+}
+
+function luckySearch(tabId){
+  const q=document.querySelector(`#home-${tabId} .home-search`)?.value?.trim();
+  if(!q) return;
+  fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).then(d=>{ if(d.results?.length) navigateTab(tabId,d.results[0].url); });
+}
+
+// ── Back / Fwd / Reload / Home ────────────────────────────────
+function goBack(){ const t=getActive(); if(!t||t.hidx<=0) return; t.hidx--; t.url=t.hist[t.hidx]; showProxyPage(t.id,t.url); syncNav(); }
+function goFwd(){ const t=getActive(); if(!t||t.hidx>=t.hist.length-1) return; t.hidx++; t.url=t.hist[t.hidx]; showProxyPage(t.id,t.url); syncNav(); }
+function reloadTab(){ const t=getActive(); if(!t||!t.url) return; if(t.type==='search'){ const q=new URLSearchParams(t.url.slice(1)).get('q'); if(q) doSearch(q); } else showProxyPage(t.id,t.url); }
+function goHome(){ const t=getActive(); if(!t) return; t.type='home'; t.url=''; t.title='Maths Proxy'; t.icon='🔒'; const p=getOrCreatePage(t.id); p.innerHTML=buildHome(t.id); checkSW(t.id); updateTabEl(t.id,{title:'Maths Proxy',icon:'🔒'}); document.getElementById('url-input').value=''; syncNav(); }
+
+// ── Bookmarks ─────────────────────────────────────────────────
+function getBM(){ try{ return JSON.parse(localStorage.getItem('mp_bm')||'[]'); }catch{ return []; } }
+function saveBM(bms){ localStorage.setItem('mp_bm',JSON.stringify(bms)); }
+function toggleBookmark(){
+  const t=getActive(); if(!t||!t.url) return;
+  let bms=getBM(); const i=bms.findIndex(b=>b.url===t.url);
+  if(i>=0) bms.splice(i,1); else bms.unshift({url:t.url,title:t.title||t.url,icon:t.icon||'🔍'});
+  saveBM(bms); renderBM(); syncNav();
+}
+function renderBM(){
+  const list=document.getElementById('bmList');
+  const bms=getBM();
+  if(!bms.length){ list.innerHTML='<div class="empty">No bookmarks yet.<br>Click ☆ to save a page.</div>'; return; }
+  list.innerHTML=bms.map((b,i)=>`<div class="pi"><span class="pi-ico">${b.icon||'🔍'}</span><span class="pi-title" onclick="navBM('${esc(b.url)}')">${esc(b.title)}</span><span class="pi-x" onclick="delBM(${i})">✕</span></div>`).join('');
+}
+function navBM(url){ togglePanel('bm'); const t=getActive(); if(t) navigateTab(t.id,url); }
+function delBM(i){ const bms=getBM(); bms.splice(i,1); saveBM(bms); renderBM(); syncNav(); }
+
+// ── History ───────────────────────────────────────────────────
+function getHist(){ try{ return JSON.parse(sessionStorage.getItem('mp_hist')||'[]'); }catch{ return []; } }
+function addHist(url,title){ if(!url) return; let h=getHist(); h=h.filter(x=>x.url!==url); h.unshift({url,title:title||url}); sessionStorage.setItem('mp_hist',JSON.stringify(h.slice(0,100))); }
+function renderHist(){
+  const list=document.getElementById('histList');
+  const h=getHist();
+  if(!h.length){ list.innerHTML='<div class="empty">No history yet.</div>'; return; }
+  list.innerHTML=h.map(x=>`<div class="pi"><span class="pi-ico">🕐</span><span class="pi-title" onclick="navHist('${esc(x.url)}')">${esc(x.title||x.url)}</span></div>`).join('');
+}
+function navHist(url){ togglePanel('hist'); const t=getActive(); if(t) navigateTab(t.id,url); }
+
+// ── Panels ────────────────────────────────────────────────────
+function togglePanel(p){
+  if(p==='bm'){ document.getElementById('bmPanel').classList.toggle('open'); renderBM(); }
+  else{ document.getElementById('histPanel').classList.toggle('open'); renderHist(); }
+}
+
+// ── SW check ─────────────────────────────────────────────────
+function checkSW(tabId){
+  if(!('serviceWorker' in navigator)){
+    const w=document.getElementById('sw-warn-'+tabId);
+    if(w) w.style.display='block';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Init ──────────────────────────────────────────────────────
+const firstTab = newTab();
+checkSW(firstTab);
+</script>
+</body>
+</html>
