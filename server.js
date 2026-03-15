@@ -172,3 +172,10 @@ app.get('/proxy', async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`Maths Proxy running on port ${PORT}`));
+// Keep-alive ping
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+if (RENDER_URL) {
+  setInterval(() => {
+    fetch(RENDER_URL).catch(() => {});
+  }, 14 * 60 * 1000); // cada 14 min
+}
