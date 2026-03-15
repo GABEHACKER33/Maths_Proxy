@@ -336,12 +336,13 @@ app.post('/proxy', express.urlencoded({ extended: true }), async (req, res) => {
 
 // ── Interceptor script ────────────────────────────────────────
 function buildInterceptor(finalUrl, finalOrigin) {
+  const b = finalUrl.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/`/g,'\\`');
+  const o = finalOrigin.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   return `<script>
 (function(){
-  var BASE='${finalUrl.replace(/'/g,"\\'")}';
-  var ORIGIN='${finalOrigin.replace(/'/g,"\\'")}';
+  var BASE='${b}';
+  var ORIGIN='${o}';
 
-  // Anti frame-bust
   try{
     Object.defineProperty(window,'top',{get:function(){return window;},configurable:true});
     Object.defineProperty(window,'parent',{get:function(){return window;},configurable:true});
@@ -352,38 +353,59 @@ function buildInterceptor(finalUrl, finalOrigin) {
     if(!href||/^(javascript:|mailto:|tel:|#|blob:)/.test(href)) return null;
     try{return new URL(href,BASE).href;}catch(e){return null;}
   }
-  function px(url){
-    var a=toAbs(url);
-    return a?'/proxy?url='+encodeURIComponent(a):url;
-  }
   function nav(url){
     var a=toAbs(url);
     if(!a) return;
     try{window.top.postMessage({type:'MP_NAV',url:a},'*');}catch(e){}
   }
 
-  // Click interceptor
+  // Smart click interceptor — does NOT block UI clicks, only navigation
   document.addEventListener('click',function(e){
-    var el=e.target;
+    // Never intercept canvas/iframe (games use these)
+    var t=e.target;
+    if(!t) return;
+    if(t.tagName==='CANVAS'||t.tagName==='IFRAME'||t.tagName==='VIDEO'||t.tagName==='BUTTON'||t.tagName==='INPUT') return;
+
+    // Walk up DOM to find closest <a>
+    var el=t;
     while(el&&el.tagName!=='A') el=el.parentElement;
     if(!el) return;
+
     var href=el.getAttribute('href')||'';
-    if(/^(javascript:|#)/.test(href)) return;
+
+    // Skip: no href, anchors, javascript:, already proxied links
+    if(!href||/^(javascript:|#)/.test(href)||href.startsWith('/proxy?')) return;
+
+    // Skip: links that have onclick (JS handles them)
+    if(el.onclick||el.getAttribute('onclick')) return;
+
+    // Skip: links with role="button" (UI elements)
+    if(el.getAttribute('role')==='button') return;
+
     var a=toAbs(href);
     if(!a) return;
-    e.preventDefault();e.stopPropagation();
+
+    // Only intercept cross-origin links — same-origin hrefs already rewritten by server
+    try{
+      var dest=new URL(a);
+      var here=new URL(location.href);
+      if(dest.hostname===here.hostname) return;
+    }catch(ex){}
+
+    e.preventDefault();
+    e.stopPropagation();
     nav(a);
   },true);
 
   // window.open
   var _open=window.open;
-  window.open=function(url){
+  window.open=function(url,target,features){
     var a=toAbs(url);
-    if(a){nav(a);return{focus:function(){},closed:false,postMessage:function(){}};}
+    if(a){nav(a);return{focus:function(){},blur:function(){},closed:false,postMessage:function(){}};}
     return _open.apply(this,arguments);
   };
 
-  // fetch — handles absolute + relative URLs
+  // fetch
   var _fetch=window.fetch;
   if(_fetch) window.fetch=function(input,init){
     try{
@@ -391,16 +413,16 @@ function buildInterceptor(finalUrl, finalOrigin) {
       if(url){
         var abs=toAbs(url);
         if(abs&&!abs.startsWith(location.origin)){
-          var proxied='/proxy?url='+encodeURIComponent(abs);
-          input=typeof input==='string'?proxied:new Request(proxied,input);
+          var px='/proxy?url='+encodeURIComponent(abs);
+          input=typeof input==='string'?px:new Request(px,input);
         }
       }
     }catch(e){}
     return _fetch.call(this,input,init);
   };
 
-  // XMLHttpRequest — handles absolute + relative URLs
-  var _xhr=XMLHttpRequest.prototype.open;
+  // XMLHttpRequest
+  var _xhrOpen=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m,url){
     try{
       if(typeof url==='string'){
@@ -409,40 +431,18 @@ function buildInterceptor(finalUrl, finalOrigin) {
           url='/proxy?url='+encodeURIComponent(abs);
       }
     }catch(e){}
-    var a=Array.prototype.slice.call(arguments);a[1]=url;
-    return _xhr.apply(this,a);
+    var args=Array.prototype.slice.call(arguments);
+    args[1]=url;
+    return _xhrOpen.apply(this,args);
   };
 
-  // WebSocket — wrap in proxy (best-effort, many sites need this for live content)
-  var _WS=window.WebSocket;
-  if(_WS) window.WebSocket=function(url,protocols){
-    try{
-      // Convert ws:// wss:// to https:// for proxying
-      if(typeof url==='string'&&(url.startsWith('ws://')||url.startsWith('wss://'))){
-        var httpUrl=url.replace(/^ws:/,'http:').replace(/^wss:/,'https:');
-        // Can't truly proxy WebSockets via HTTP proxy, fall back to original
-        // but at least try to avoid blocking
-        return protocols?new _WS(url,protocols):new _WS(url);
-      }
-    }catch(e){}
-    return protocols?new _WS(url,protocols):new _WS(url);
-  };
-  if(_WS) window.WebSocket.prototype=_WS.prototype;
-
-  // Service Worker — unregister any SW that might cache old responses
-  if(navigator.serviceWorker){
-    navigator.serviceWorker.getRegistrations().then(function(regs){
-      regs.forEach(function(r){r.unregister();});
-    }).catch(function(){});
-  }
-
-  // location.assign/replace
+  // location.assign / replace
   try{
     window.location.assign=function(u){nav(u);};
     window.location.replace=function(u){nav(u);};
   }catch(e){}
 
-  // history.pushState/replaceState
+  // history.pushState / replaceState
   var _ps=history.pushState.bind(history);
   var _rs=history.replaceState.bind(history);
   history.pushState=function(s,t,u){
@@ -454,13 +454,13 @@ function buildInterceptor(finalUrl, finalOrigin) {
     return _rs.apply(this,arguments);
   };
 
-  // MutationObserver — fix lazy-loaded resources
+  // MutationObserver — fix lazy-loaded resources added by JS
   new MutationObserver(function(ms){
     ms.forEach(function(m){
       m.addedNodes.forEach(function(n){
         if(n.nodeType!==1) return;
         ['src','data-src','data-lazy','data-original'].forEach(function(a){
-          if(!n.hasAttribute(a)) return;
+          if(!n.hasAttribute||!n.hasAttribute(a)) return;
           var v=n.getAttribute(a);
           if(v&&v.startsWith('http')&&!v.startsWith(location.origin))
             n.setAttribute(a,'/proxy?url='+encodeURIComponent(v));
@@ -476,7 +476,14 @@ function buildInterceptor(finalUrl, finalOrigin) {
     });
   }).observe(document.documentElement,{childList:true,subtree:true});
 
-  // Report title
+  // Unregister service workers
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.getRegistrations().then(function(r){
+      r.forEach(function(sw){sw.unregister();});
+    }).catch(function(){});
+  }
+
+  // Report title to parent
   function report(){
     try{window.top.postMessage({type:'MP_TITLE',title:document.title,url:BASE},'*');}catch(e){}
   }
@@ -484,7 +491,7 @@ function buildInterceptor(finalUrl, finalOrigin) {
   window.addEventListener('load',report);
   setTimeout(report,800);
 })();
-</script>`;
+<\/script>`;
 }
 
 function blockedPage(url, hostname) {
@@ -513,4 +520,4 @@ function errorPage(url, msg) {
   <a href="javascript:history.back()">← Go back</a></body></html>`;
 }
 
-app.listen(PORT, () => console.log(`✓ Maths Proxy v4 on port ${PORT}`));
+app.listen(PORT, () => console.log('Maths Proxy v4 on port ' + PORT));
