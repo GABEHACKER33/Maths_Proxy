@@ -125,11 +125,21 @@ app.get('/proxy', async (req, res) => {
       return;
     }
 
-    // JS — pass through
+    // JS — rewrite hardcoded absolute URLs inside scripts
     if (ct.includes('javascript') || ct.includes('ecmascript')) {
       strip();
       res.set('Content-Type', 'application/javascript; charset=utf-8');
-      res.send(await upstream.text());
+      let js = await upstream.text();
+      // Rewrite absolute URLs in string literals inside JS
+      js = js.replace(/(["'`])(https?:\/\/[^"'`\s]{4,})\1/g, (match, q, url) => {
+        try {
+          new URL(url);
+          // Skip data URLs and already-proxied
+          if (url.includes('/proxy?url=')) return match;
+          return `${q}/proxy?url=${encodeURIComponent(url)}${q}`;
+        } catch { return match; }
+      });
+      res.send(js);
       return;
     }
 
@@ -168,12 +178,41 @@ app.get('/proxy', async (req, res) => {
       } catch {}
     });
 
-    // Rewrite all src attributes
+    // Rewrite all src attributes (img, script, iframe, audio, video, source, track)
     $('[src]').each((_, el) => {
       const src = $(el).attr('src');
       if (!src) return;
       const p = toProxyUrl(src, finalUrl);
       if (p !== src) $(el).attr('src', p);
+    });
+
+    // Rewrite <video poster>
+    $('video[poster]').each((_, el) => {
+      const v = $(el).attr('poster');
+      const p = toProxyUrl(v, finalUrl);
+      if (p !== v) $(el).attr('poster', p);
+    });
+
+    // Rewrite <source src> and <source srcset> (video/audio/picture)
+    $('source').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src) { const p = toProxyUrl(src, finalUrl); if (p !== src) $(el).attr('src', p); }
+      const srcset = $(el).attr('srcset');
+      if (srcset) {
+        const rw = srcset.replace(/([^\s,]+)(\s+[^\s,]+)?/g, (m, u, d) => {
+          if (!u || u.startsWith('data:')) return m;
+          try { return `/proxy?url=${encodeURIComponent(new URL(u, finalUrl).href)}${d||''}`; }
+          catch { return m; }
+        });
+        $(el).attr('srcset', rw);
+      }
+    });
+
+    // Rewrite <track src> (subtitles/captions)
+    $('track[src]').each((_, el) => {
+      const v = $(el).attr('src');
+      const p = toProxyUrl(v, finalUrl);
+      if (p !== v) $(el).attr('src', p);
     });
 
     // Rewrite <link href>
@@ -344,28 +383,58 @@ function buildInterceptor(finalUrl, finalOrigin) {
     return _open.apply(this,arguments);
   };
 
-  // fetch
+  // fetch — handles absolute + relative URLs
   var _fetch=window.fetch;
   if(_fetch) window.fetch=function(input,init){
     try{
-      if(typeof input==='string'&&input.startsWith('http')&&!input.startsWith(location.origin))
-        input='/proxy?url='+encodeURIComponent(input);
-      else if(input&&typeof input==='object'&&input.url&&input.url.startsWith('http')&&!input.url.startsWith(location.origin))
-        input=new Request('/proxy?url='+encodeURIComponent(input.url),input);
+      var url=typeof input==='string'?input:(input&&input.url?input.url:null);
+      if(url){
+        var abs=toAbs(url);
+        if(abs&&!abs.startsWith(location.origin)){
+          var proxied='/proxy?url='+encodeURIComponent(abs);
+          input=typeof input==='string'?proxied:new Request(proxied,input);
+        }
+      }
     }catch(e){}
     return _fetch.call(this,input,init);
   };
 
-  // XMLHttpRequest
+  // XMLHttpRequest — handles absolute + relative URLs
   var _xhr=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m,url){
     try{
-      if(typeof url==='string'&&url.startsWith('http')&&!url.startsWith(location.origin))
-        url='/proxy?url='+encodeURIComponent(url);
+      if(typeof url==='string'){
+        var abs=toAbs(url);
+        if(abs&&!abs.startsWith(location.origin))
+          url='/proxy?url='+encodeURIComponent(abs);
+      }
     }catch(e){}
     var a=Array.prototype.slice.call(arguments);a[1]=url;
     return _xhr.apply(this,a);
   };
+
+  // WebSocket — wrap in proxy (best-effort, many sites need this for live content)
+  var _WS=window.WebSocket;
+  if(_WS) window.WebSocket=function(url,protocols){
+    try{
+      // Convert ws:// wss:// to https:// for proxying
+      if(typeof url==='string'&&(url.startsWith('ws://')||url.startsWith('wss://'))){
+        var httpUrl=url.replace(/^ws:/,'http:').replace(/^wss:/,'https:');
+        // Can't truly proxy WebSockets via HTTP proxy, fall back to original
+        // but at least try to avoid blocking
+        return protocols?new _WS(url,protocols):new _WS(url);
+      }
+    }catch(e){}
+    return protocols?new _WS(url,protocols):new _WS(url);
+  };
+  if(_WS) window.WebSocket.prototype=_WS.prototype;
+
+  // Service Worker — unregister any SW that might cache old responses
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      regs.forEach(function(r){r.unregister();});
+    }).catch(function(){});
+  }
 
   // location.assign/replace
   try{
