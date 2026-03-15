@@ -5,77 +5,287 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Maths Proxy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
-      --bg: #0d0d1a;
-      --surface: #13132a;
-      --border: #2a2a4a;
-      --accent: #e94560;
-      --accent2: #0f3460;
-      --text: #e8e8f0;
-      --muted: #6b6b8a;
-      --blue: #4d9de0;
-      --green: #07b39b;
+      --bg:       #07070f;
+      --surface:  #0f0f1e;
+      --card:     #14142a;
+      --border:   #1e1e3a;
+      --accent:   #e94560;
+      --accent2:  #4d9de0;
+      --green:    #00d4aa;
+      --yellow:   #f5a623;
+      --text:     #eeeef5;
+      --muted:    #5a5a7a;
+      --sub:      #9a9abf;
+      --radius:   10px;
     }
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
     body {
-      font-family: 'Syne', sans-serif;
+      font-family: 'Space Grotesk', sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;
     }
 
-    /* ─── Noise texture overlay ─── */
+    /* Grid background */
     body::before {
       content: '';
       position: fixed;
       inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      background-image:
+        linear-gradient(rgba(77,157,224,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(77,157,224,0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
       pointer-events: none;
       z-index: 0;
-      opacity: 0.4;
     }
 
-    header {
+    /* Glow blobs */
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.18;
+    }
+    .blob-1 { width:500px; height:500px; background:#e94560; top:-150px; left:-150px; }
+    .blob-2 { width:400px; height:400px; background:#4d9de0; bottom:-100px; right:-100px; }
+
+    /* ─── HEADER ─── */
+    #header {
       display: flex;
-      justify-content: flex-end;
-      padding: 16px 24px;
-      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
       position: relative;
-      z-index: 1;
+      z-index: 10;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.3s, background 0.3s;
     }
 
-    header a {
-      font-size: 13px;
-      color: var(--muted);
+    #header.scrolled {
+      background: rgba(7,7,15,0.92);
+      border-color: var(--border);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
       text-decoration: none;
-      font-family: 'Share Tech Mono', monospace;
-      letter-spacing: 0.5px;
-      transition: color 0.2s;
+      cursor: pointer;
     }
+    .header-logo .m { color: #4d9de0; }
+    .header-logo .a { color: #e94560; }
+    .header-logo .t { color: #f5a623; }
+    .header-logo .h { color: #4d9de0; }
+    .header-logo .s { color: #00d4aa; }
+    .header-logo .sp { color: transparent; }
+    .header-logo .p { color: #e94560; }
+    .header-logo .r { color: #f5a623; }
+    .header-logo .o { color: #4d9de0; }
+    .header-logo .x { color: #00d4aa; }
+    .header-logo .y { color: #e94560; }
 
-    header a:hover { color: var(--text); }
+    .header-nav { display: flex; align-items: center; gap: 12px; }
 
-    header .signin {
+    .btn-ghost {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--sub);
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: 'Space Grotesk', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-ghost:hover { border-color: var(--accent2); color: var(--text); }
+
+    .btn-primary {
       background: var(--accent);
+      border: none;
       color: white;
       padding: 8px 20px;
-      border-radius: 3px;
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Space Grotesk', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+    .btn-primary:hover { background: #ff2d4e; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(233,69,96,0.35); }
+
+    /* User avatar in header */
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px 5px 6px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .user-chip:hover { border-color: var(--accent2); }
+    .user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: white;
+    }
+    .user-email { font-size: 13px; color: var(--sub); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ─── MODAL ─── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 400px;
+      position: relative;
+      animation: modalIn 0.25s ease;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6);
     }
 
-    header .signin:hover { background: #ff2d4e; color: white; }
+    @keyframes modalIn {
+      from { opacity:0; transform: scale(0.95) translateY(10px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
 
-    /* ─── Main ─── */
-    main {
+    .modal-close {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 20px; line-height: 1;
+      transition: color 0.2s;
+    }
+    .modal-close:hover { color: var(--text); }
+
+    .modal-logo {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 6px;
+    }
+    .modal-logo .m { color: #4d9de0; }
+    .modal-logo .a { color: #e94560; }
+    .modal-logo .t { color: #f5a623; }
+    .modal-logo .h { color: #4d9de0; }
+    .modal-logo .s { color: #00d4aa; }
+
+    .modal-sub { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 28px; font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+
+    .tab-bar {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .tab {
+      flex: 1;
+      padding: 9px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: 'Space Grotesk', sans-serif;
+      transition: all 0.2s;
+    }
+    .tab.active { background: var(--accent); color: white; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--sub);
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: 'Space Grotesk', sans-serif;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(233,69,96,0.12);
+    }
+    .form-input::placeholder { color: var(--muted); }
+
+    .btn-full {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: 'Space Grotesk', sans-serif;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+    .btn-full:hover { background: #ff2d4e; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(233,69,96,0.35); }
+    .btn-full:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .auth-msg {
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: 7px;
+      font-size: 13px;
+      text-align: center;
+      display: none;
+    }
+    .auth-msg.error { background: rgba(233,69,96,0.12); border: 1px solid rgba(233,69,96,0.3); color: #ff6b7a; display: block; }
+    .auth-msg.success { background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.3); color: var(--green); display: block; }
+
+    /* ─── HOME PAGE ─── */
+    #home-page {
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -86,112 +296,84 @@
       z-index: 1;
     }
 
-    /* ─── Logo ─── */
-    .logo {
-      margin-bottom: 36px;
+    .main-logo {
+      margin-bottom: 32px;
       text-align: center;
-      animation: fadeDown 0.6s ease both;
+      animation: fadeDown 0.5s ease both;
     }
-
-    .logo-text {
-      font-size: 68px;
-      font-weight: 800;
-      line-height: 1;
+    .main-logo-text {
+      font-size: clamp(48px, 10vw, 78px);
+      font-weight: 700;
       letter-spacing: -3px;
+      line-height: 1;
     }
+    .main-logo-text .m { color: #4d9de0; }
+    .main-logo-text .a { color: #e94560; }
+    .main-logo-text .t { color: #f5a623; }
+    .main-logo-text .h { color: #4d9de0; }
+    .main-logo-text .s { color: #00d4aa; }
+    .main-logo-text .sp { display: inline-block; width: 18px; }
+    .main-logo-text .p { color: #e94560; }
+    .main-logo-text .r { color: #f5a623; }
+    .main-logo-text .o { color: #4d9de0; }
+    .main-logo-text .x { color: #00d4aa; }
+    .main-logo-text .y { color: #e94560; }
 
-    .logo-text .m { color: #4d9de0; }
-    .logo-text .a { color: #e94560; }
-    .logo-text .t { color: #f5a623; }
-    .logo-text .h { color: #4d9de0; }
-    .logo-text .s { color: #07b39b; }
-    .logo-text .space { display: inline-block; width: 18px; }
-    .logo-text .p { color: #e94560; }
-    .logo-text .r { color: #f5a623; }
-    .logo-text .o { color: #4d9de0; }
-    .logo-text .x { color: #07b39b; }
-    .logo-text .y { color: #e94560; }
-
-    .logo-sub {
-      font-family: 'Share Tech Mono', monospace;
+    .main-logo-sub {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: var(--muted);
-      letter-spacing: 4px;
+      letter-spacing: 5px;
       text-transform: uppercase;
-      margin-top: 6px;
+      margin-top: 8px;
     }
 
-    /* ─── Search box ─── */
     .search-wrapper {
       width: 100%;
-      max-width: 580px;
+      max-width: 600px;
       position: relative;
-      animation: fadeUp 0.6s 0.1s ease both;
+      animation: fadeUp 0.5s 0.1s ease both;
     }
 
     .search-input {
       width: 100%;
-      padding: 14px 52px 14px 22px;
+      padding: 15px 56px 15px 22px;
       background: var(--surface);
       border: 1.5px solid var(--border);
-      border-radius: 28px;
+      border-radius: 32px;
       font-size: 16px;
-      font-family: 'Syne', sans-serif;
+      font-family: 'Space Grotesk', sans-serif;
       color: var(--text);
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
-
-    .search-input::placeholder { color: var(--muted); }
-
     .search-input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.15), 0 4px 20px rgba(0,0,0,0.4);
+      box-shadow: 0 0 0 4px rgba(233,69,96,0.12), 0 8px 32px rgba(0,0,0,0.4);
     }
+    .search-input::placeholder { color: var(--muted); }
 
-    .search-btn-icon {
+    .search-go {
       position: absolute;
-      right: 16px;
-      top: 50%;
+      right: 8px; top: 50%;
       transform: translateY(-50%);
-      background: none;
+      background: var(--accent);
       border: none;
+      width: 40px; height: 40px;
+      border-radius: 50%;
       cursor: pointer;
-      color: var(--muted);
-      padding: 4px;
-      transition: color 0.2s;
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .search-go:hover { background: #ff2d4e; transform: translateY(-50%) scale(1.08); }
+
+    .home-buttons {
+      display: flex; gap: 10px; margin-top: 22px;
+      animation: fadeUp 0.5s 0.2s ease both;
     }
 
-    .search-btn-icon:hover { color: var(--accent); }
-
-    /* ─── Buttons ─── */
-    .buttons {
-      display: flex;
-      gap: 12px;
-      margin-top: 24px;
-      animation: fadeUp 0.6s 0.2s ease both;
-    }
-
-    .btn {
-      background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 13px;
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      padding: 9px 20px;
-      cursor: pointer;
-      letter-spacing: 0.5px;
-      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-    }
-
-    .btn:hover {
-      border-color: var(--accent);
-      box-shadow: 0 0 12px rgba(233,69,96,0.2);
-    }
-
-    /* ─── Results page ─── */
+    /* ─── RESULTS PAGE ─── */
     #results-page {
       display: none;
       flex-direction: column;
@@ -200,224 +382,251 @@
       z-index: 1;
     }
 
-    .results-header {
+    .results-bar {
       display: flex;
       align-items: center;
-      gap: 20px;
-      padding: 14px 24px;
+      gap: 16px;
+      padding: 10px 20px;
+      background: rgba(7,7,15,0.95);
       border-bottom: 1px solid var(--border);
-      background: var(--surface);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      backdrop-filter: blur(10px);
+      position: sticky; top: 0; z-index: 100;
     }
 
-    .results-logo {
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -1px;
-      text-decoration: none;
-      color: var(--text);
+    .results-logo-small {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      cursor: pointer;
       flex-shrink: 0;
+      text-decoration: none;
     }
+    .results-logo-small .m { color: #4d9de0; }
+    .results-logo-small .a { color: #e94560; }
+    .results-logo-small .t { color: #f5a623; }
+    .results-logo-small .h { color: #4d9de0; }
+    .results-logo-small .s { color: #00d4aa; }
 
-    .results-logo span:nth-child(1) { color: #4d9de0; }
-    .results-logo span:nth-child(2) { color: #e94560; }
-    .results-logo span:nth-child(3) { color: #f5a623; }
-    .results-logo span:nth-child(4) { color: #4d9de0; }
-    .results-logo span:nth-child(5) { color: #07b39b; }
-
-    .results-search-wrap {
-      flex: 1;
-      max-width: 580px;
-      position: relative;
-    }
+    .results-input-wrap { flex: 1; max-width: 560px; position: relative; }
 
     .results-input {
       width: 100%;
       padding: 10px 44px 10px 18px;
-      background: var(--bg);
+      background: var(--card);
       border: 1.5px solid var(--border);
       border-radius: 22px;
       font-size: 15px;
-      font-family: 'Syne', sans-serif;
+      font-family: 'Space Grotesk', sans-serif;
       color: var(--text);
       outline: none;
       transition: border-color 0.2s;
     }
-
     .results-input:focus { border-color: var(--accent); }
 
     .results-search-icon {
       position: absolute;
-      right: 14px;
-      top: 50%;
+      right: 13px; top: 50%;
       transform: translateY(-50%);
-      background: none;
-      border: none;
-      color: var(--muted);
-      cursor: pointer;
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      transition: color 0.2s;
     }
+    .results-search-icon:hover { color: var(--accent); }
 
-    .results-body {
-      padding: 24px 24px 40px;
-      max-width: 700px;
-    }
+    .results-body { padding: 24px 28px 60px; max-width: 740px; }
 
-    .results-count {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 12px;
+    .results-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
       color: var(--muted);
-      margin-bottom: 20px;
       letter-spacing: 1px;
+      margin-bottom: 22px;
+      text-transform: uppercase;
     }
 
-    .result-item {
-      margin-bottom: 28px;
+    .result-card {
+      margin-bottom: 26px;
+      padding: 18px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 0.2s, box-shadow 0.2s;
       animation: fadeUp 0.3s ease both;
     }
+    .result-card:hover {
+      border-color: rgba(77,157,224,0.4);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
 
-    .result-url {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 12px;
+    .result-domain {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
       color: var(--green);
-      margin-bottom: 2px;
+      margin-bottom: 4px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
     .result-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--blue);
-      cursor: pointer;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--accent2);
       text-decoration: none;
       display: block;
-      margin-bottom: 4px;
-      line-height: 1.3;
+      margin-bottom: 6px;
+      line-height: 1.35;
+      transition: color 0.2s;
     }
-
-    .result-title:hover { color: var(--accent); text-decoration: underline; }
+    .result-title:hover { color: var(--accent); }
 
     .result-snippet {
-      font-size: 14px;
-      color: #a0a0b8;
-      line-height: 1.6;
+      font-size: 13px;
+      color: var(--sub);
+      line-height: 1.65;
     }
 
-    /* ─── Loading spinner ─── */
+    /* Spinner */
     .spinner {
       display: none;
-      width: 28px;
-      height: 28px;
+      width: 32px; height: 32px;
       border: 3px solid var(--border);
       border-top-color: var(--accent);
       border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      animation: spin 0.65s linear infinite;
       margin: 60px auto;
     }
 
-    /* ─── Footer ─── */
+    /* ─── FOOTER ─── */
     footer {
       background: var(--surface);
       border-top: 1px solid var(--border);
-      padding: 14px 24px;
+      padding: 14px 28px;
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 12px;
-      font-family: 'Share Tech Mono', monospace;
+      font-family: 'JetBrains Mono', monospace;
       color: var(--muted);
       position: relative;
       z-index: 1;
     }
-
     footer a { color: var(--muted); text-decoration: none; margin-left: 18px; }
     footer a:hover { color: var(--text); }
 
     /* ─── Animations ─── */
     @keyframes fadeDown {
-      from { opacity: 0; transform: translateY(-20px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity:0; transform: translateY(-16px); }
+      to   { opacity:1; transform: translateY(0); }
     }
-
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(16px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity:0; transform: translateY(14px); }
+      to   { opacity:1; transform: translateY(0); }
     }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* ─── Glowing grid bg ─── */
-    .grid-bg {
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(77,157,224,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(77,157,224,0.03) 1px, transparent 1px);
-      background-size: 40px 40px;
-      pointer-events: none;
-      z-index: 0;
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 
-<div class="grid-bg"></div>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
 
-<!-- ═══ HOME PAGE ═══ -->
-<div id="home-page">
-  <header>
-    <a href="#">About</a>
-    <a href="#">Settings</a>
-    <a href="#" class="signin">Sign in</a>
-  </header>
+<!-- ══════════════════ AUTH MODAL ══════════════════ -->
+<div class="modal-overlay" id="authModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
 
-  <main>
-    <div class="logo">
-      <div class="logo-text">
-        <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="space"></span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
+    <div class="modal-logo">
+      <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span>
+    </div>
+    <div class="modal-sub">secure · anonymous · fast</div>
+
+    <div class="tab-bar">
+      <button class="tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+      <button class="tab" id="tabRegister" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <!-- Login -->
+    <div id="formLogin">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email"/>
       </div>
-      <div class="logo-sub">secure · anonymous · fast</div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <button class="btn-full" id="loginBtn" onclick="doLogin()">Sign In →</button>
+      <div class="auth-msg" id="loginMsg"></div>
+    </div>
+
+    <!-- Register -->
+    <div id="formRegister" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" type="email" id="regEmail" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="regPass" placeholder="Min. 6 characters" autocomplete="new-password"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password</label>
+        <input class="form-input" type="password" id="regPassConfirm" placeholder="Repeat password"/>
+      </div>
+      <button class="btn-full" id="registerBtn" onclick="doRegister()">Create Account →</button>
+      <div class="auth-msg" id="registerMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div id="header">
+  <div class="header-logo" onclick="goHome()">
+    <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
+  </div>
+  <div class="header-nav" id="headerNav">
+    <button class="btn-ghost" onclick="openModal()">Sign In</button>
+    <button class="btn-primary" onclick="openModal(); switchTab('register')">Register</button>
+  </div>
+</div>
+
+<!-- ══════════════════ HOME PAGE ══════════════════ -->
+<div id="home-page">
+  <main>
+    <div class="main-logo">
+      <div class="main-logo-text">
+        <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span><span class="sp"> </span><span class="p">P</span><span class="r">r</span><span class="o">o</span><span class="x">x</span><span class="y">y</span>
+      </div>
+      <div class="main-logo-sub">private · uncensored · fast</div>
     </div>
 
     <div class="search-wrapper">
-      <input class="search-input" type="text" id="homeInput" placeholder="Search anything..." autocomplete="off"/>
-      <button class="search-btn-icon" onclick="doSearch()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <input class="search-input" type="text" id="homeInput" placeholder="Search the web privately..." autocomplete="off"/>
+      <button class="search-go" onclick="doSearch()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </button>
     </div>
 
-    <div class="buttons">
-      <button class="btn" onclick="doSearch()">Maths Proxy Search</button>
-      <button class="btn" onclick="feelingLucky()">I'm Feeling Lucky</button>
+    <div class="home-buttons">
+      <button class="btn-ghost" onclick="doSearch()">Search</button>
+      <button class="btn-ghost" onclick="feelingLucky()">I'm Feeling Lucky</button>
     </div>
   </main>
-
-  <footer>
-    <span>Spain</span>
-    <div>
-      <a href="#">Privacy</a>
-      <a href="#">Terms</a>
-      <a href="#">Settings</a>
-    </div>
-  </footer>
 </div>
 
-<!-- ═══ RESULTS PAGE ═══ -->
+<!-- ══════════════════ RESULTS PAGE ══════════════════ -->
 <div id="results-page">
-  <div class="results-header">
-    <a class="results-logo" href="#" onclick="goHome(); return false;">
-      <span>M</span><span>a</span><span>t</span><span>h</span><span>s</span>
-    </a>
-    <div class="results-search-wrap">
+  <div class="results-bar">
+    <div class="results-logo-small" onclick="goHome()">
+      <span class="m">M</span><span class="a">a</span><span class="t">t</span><span class="h">h</span><span class="s">s</span>
+    </div>
+    <div class="results-input-wrap">
       <input class="results-input" type="text" id="resultsInput" autocomplete="off"/>
       <button class="results-search-icon" onclick="doSearch()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </button>
@@ -426,41 +635,158 @@
 
   <div class="results-body">
     <div class="spinner" id="spinner"></div>
-    <div class="results-count" id="resultsCount"></div>
+    <div class="results-meta" id="resultsMeta"></div>
     <div id="resultsList"></div>
   </div>
 </div>
 
+<!-- ══════════════════ FOOTER ══════════════════ -->
+<footer>
+  <span>Maths Proxy · private browsing</span>
+  <div>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+  </div>
+</footer>
+
+<!-- ══════════════════ SCRIPT ══════════════════ -->
 <script>
-  const homeInput = document.getElementById('homeInput');
-  const resultsInput = document.getElementById('resultsInput');
+  // ── Supabase ──────────────────────────────────────────
+  const SUPABASE_URL  = 'https://hsmfjpetvcsgkpkwpdjr.supabase.co';
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzbWZqcGV0dmNzZ2twa3dwZGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3NDc0MzEsImV4cCI6MjA3OTMyMzQzMX0.IBiJtUJBPyjNwGowfgnlfrbHpb46C43NmYY3O9rEFqQ';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-  homeInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
-  resultsInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  let currentUser = null;
 
+  // Check session on load
+  sb.auth.getSession().then(({ data: { session } }) => {
+    if (session?.user) setUser(session.user);
+  });
+
+  sb.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) setUser(session.user);
+    else clearUser();
+  });
+
+  function setUser(user) {
+    currentUser = user;
+    const initial = (user.email || '?')[0].toUpperCase();
+    document.getElementById('headerNav').innerHTML = `
+      <div class="user-chip" onclick="doSignOut()" title="Click to sign out">
+        <div class="user-avatar">${initial}</div>
+        <span class="user-email">${user.email}</span>
+      </div>
+    `;
+    closeModal();
+  }
+
+  function clearUser() {
+    currentUser = null;
+    document.getElementById('headerNav').innerHTML = `
+      <button class="btn-ghost" onclick="openModal()">Sign In</button>
+      <button class="btn-primary" onclick="openModal(); switchTab('register')">Register</button>
+    `;
+  }
+
+  async function doSignOut() {
+    if (!confirm('Sign out?')) return;
+    await sb.auth.signOut();
+  }
+
+  // ── Modal ──────────────────────────────────────────────
+  function openModal() {
+    document.getElementById('authModal').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('authModal').classList.remove('open');
+  }
+  document.getElementById('authModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+
+  function switchTab(tab) {
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+    document.getElementById('formLogin').style.display = tab === 'login' ? '' : 'none';
+    document.getElementById('formRegister').style.display = tab === 'register' ? '' : 'none';
+  }
+
+  function showMsg(id, msg, type) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = `auth-msg ${type}`;
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass  = document.getElementById('loginPass').value;
+    const btn   = document.getElementById('loginBtn');
+    if (!email || !pass) return showMsg('loginMsg', 'Please fill in all fields.', 'error');
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    btn.disabled = false;
+    btn.textContent = 'Sign In →';
+    if (error) showMsg('loginMsg', error.message, 'error');
+    else showMsg('loginMsg', 'Welcome back!', 'success');
+  }
+
+  async function doRegister() {
+    const email = document.getElementById('regEmail').value.trim();
+    const pass  = document.getElementById('regPass').value;
+    const conf  = document.getElementById('regPassConfirm').value;
+    const btn   = document.getElementById('registerBtn');
+    if (!email || !pass) return showMsg('registerMsg', 'Please fill in all fields.', 'error');
+    if (pass !== conf) return showMsg('registerMsg', 'Passwords do not match.', 'error');
+    if (pass.length < 6) return showMsg('registerMsg', 'Password must be at least 6 characters.', 'error');
+    btn.disabled = true;
+    btn.textContent = 'Creating account…';
+    const { error } = await sb.auth.signUp({ email, password: pass });
+    btn.disabled = false;
+    btn.textContent = 'Create Account →';
+    if (error) showMsg('registerMsg', error.message, 'error');
+    else showMsg('registerMsg', 'Account created! Check your email to confirm.', 'success');
+  }
+
+  // Enter key on login/register inputs
+  ['loginEmail','loginPass'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  });
+  ['regEmail','regPass','regPassConfirm'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
+  });
+
+  // ── Navigation ─────────────────────────────────────────
   function goHome() {
     document.getElementById('home-page').style.display = '';
     document.getElementById('results-page').style.display = 'none';
+    document.getElementById('homeInput').focus();
   }
+
+  // ── Search ─────────────────────────────────────────────
+  const homeInput    = document.getElementById('homeInput');
+  const resultsInput = document.getElementById('resultsInput');
+
+  homeInput.addEventListener('keydown',    e => { if (e.key === 'Enter') doSearch(); });
+  resultsInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
   function doSearch() {
     const q = (homeInput.value || resultsInput.value).trim();
     if (!q) return;
 
-    homeInput.value = q;
+    homeInput.value    = q;
     resultsInput.value = q;
 
-    document.getElementById('home-page').style.display = 'none';
-    const rp = document.getElementById('results-page');
-    rp.style.display = 'flex';
+    document.getElementById('home-page').style.display    = 'none';
+    document.getElementById('results-page').style.display = 'flex';
 
     const spinner = document.getElementById('spinner');
-    const list = document.getElementById('resultsList');
-    const count = document.getElementById('resultsCount');
+    const list    = document.getElementById('resultsList');
+    const meta    = document.getElementById('resultsMeta');
 
     spinner.style.display = 'block';
     list.innerHTML = '';
-    count.textContent = '';
+    meta.textContent = '';
 
     fetch(`/search?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
@@ -468,27 +794,31 @@
         spinner.style.display = 'none';
 
         if (!data.results || data.results.length === 0) {
-          list.innerHTML = '<p style="color:var(--muted);font-family:monospace;">No results found.</p>';
+          list.innerHTML = `<p style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;">No results found for "<strong style="color:var(--text)">${q}</strong>".</p>`;
           return;
         }
 
-        count.textContent = `~ ${data.results.length} results found`;
+        meta.textContent = `≈ ${data.results.length} results`;
 
         data.results.forEach((item, i) => {
-          const div = document.createElement('div');
-          div.className = 'result-item';
-          div.style.animationDelay = `${i * 0.04}s`;
-          div.innerHTML = `
-            <div class="result-url">${item.display || item.url}</div>
-            <a class="result-title" href="/proxy?url=${encodeURIComponent(item.url)}" target="_blank">${item.title}</a>
-            <div class="result-snippet">${item.snippet}</div>
+          const card = document.createElement('div');
+          card.className = 'result-card';
+          card.style.animationDelay = `${i * 0.045}s`;
+
+          let domain = '';
+          try { domain = new URL(item.url).hostname; } catch {}
+
+          card.innerHTML = `
+            <div class="result-domain">🔒 ${domain || item.display || ''}</div>
+            <a class="result-title" href="/proxy?url=${encodeURIComponent(item.url)}" target="_blank">${escHtml(item.title)}</a>
+            <div class="result-snippet">${escHtml(item.snippet)}</div>
           `;
-          list.appendChild(div);
+          list.appendChild(card);
         });
       })
       .catch(err => {
         spinner.style.display = 'none';
-        list.innerHTML = `<p style="color:var(--accent);font-family:monospace;">Error: ${err.message}</p>`;
+        list.innerHTML = `<p style="color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:13px;">Error: ${err.message}</p>`;
       });
   }
 
@@ -498,11 +828,24 @@
     fetch(`/search?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
       .then(data => {
-        if (data.results && data.results.length > 0) {
+        if (data.results?.length > 0) {
           window.open(`/proxy?url=${encodeURIComponent(data.results[0].url)}`, '_blank');
         }
       });
   }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // ── Scroll header effect ───────────────────────────────
+  window.addEventListener('scroll', () => {
+    document.getElementById('header').classList.toggle('scrolled', window.scrollY > 10);
+  });
 </script>
 </body>
 </html>
