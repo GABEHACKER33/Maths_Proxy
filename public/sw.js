@@ -1,7 +1,7 @@
-// Maths Proxy Service Worker v5
-// All requests go through the server's /bare/ endpoint — no direct fetches from browser
+// Maths Proxy Service Worker v5.1
 
 const PROXY_PREFIX = '/browse/';
+const BARE = '/bare/';
 
 function encodeUrl(url) {
   return btoa(unescape(encodeURIComponent(url)))
@@ -23,9 +23,10 @@ function proxyUrl(target) {
 function rewriteUrl(url, base) {
   if (!url) return url;
   const t = url.trim();
-  if (t.startsWith('data:') || t.startsWith('blob:') || t.startsWith('javascript:') ||
-      t.startsWith('#') || t.startsWith('mailto:') || t.startsWith('tel:') ||
-      t.startsWith(PROXY_PREFIX)) return t;
+  if (!t || t.startsWith('data:') || t.startsWith('blob:') ||
+      t.startsWith('javascript:') || t.startsWith('#') ||
+      t.startsWith('mailto:') || t.startsWith('tel:') ||
+      t.startsWith(PROXY_PREFIX) || t.startsWith(BARE)) return t;
   try {
     const abs = new URL(t, base).href;
     if (!abs.startsWith('http')) return t;
@@ -33,189 +34,218 @@ function rewriteUrl(url, base) {
   } catch { return t; }
 }
 
-// ── Install & activate ────────────────────────────────────────
+// ── SW lifecycle ──────────────────────────────────────────────
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
-// ── Fetch intercept ───────────────────────────────────────────
+// ── Intercept ─────────────────────────────────────────────────
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (!url.pathname.startsWith(PROXY_PREFIX)) return;
-  e.respondWith(handleRequest(e.request, url));
+  e.respondWith(handle(e.request, url));
 });
 
-async function handleRequest(request, url) {
-  // Decode target URL from path
-  const encoded = url.pathname.slice(PROXY_PREFIX.length);
+async function handle(request, reqUrl) {
+  const encoded = reqUrl.pathname.slice(PROXY_PREFIX.length);
+  if (!encoded) return errPage('No target URL provided');
+
   const target = decodeUrl(encoded);
-  if (!target) return errorPage('Invalid proxy URL');
+  if (!target) return errPage('Could not decode proxy URL');
 
   let targetUrl;
   try { targetUrl = new URL(target); }
-  catch { return errorPage('Invalid target URL'); }
+  catch { return errPage('Invalid target URL: ' + target); }
+
+  // Forward query string too
+  if (reqUrl.search) {
+    targetUrl.search = reqUrl.search;
+  }
 
   try {
-    // ── Route through our server /bare/ endpoint ──────────────
-    // This is the key fix: browser → our server → target site
-    // Avoids ALL CORS issues since the server makes the request
-
-    const bareUrl = '/bare/?url=' + encodeURIComponent(targetUrl.href);
-
-    // Build headers to pass to bare server
-    const headers = new Headers();
-    headers.set('x-bare-url', targetUrl.href);
-    headers.set('x-bare-method', request.method);
-
-    // Forward original request headers encoded
-    const fwdHeaders = {};
-    const skip = new Set(['host','connection','transfer-encoding','te','trailer','upgrade']);
-    for (const [k, v] of request.headers.entries()) {
-      if (skip.has(k.toLowerCase())) continue;
-      if (k.toLowerCase() === 'referer') {
-        // Rewrite referer back to real URL
-        try {
-          const refU = new URL(v);
-          if (refU.pathname.startsWith(PROXY_PREFIX)) {
-            const refDec = decodeUrl(refU.pathname.slice(PROXY_PREFIX.length));
-            if (refDec) { fwdHeaders['referer'] = refDec; continue; }
-          }
-        } catch {}
-      }
-      if (k.toLowerCase() === 'origin') { fwdHeaders['origin'] = targetUrl.origin; continue; }
-      fwdHeaders[k] = v;
-    }
-    fwdHeaders['host'] = targetUrl.host;
-    headers.set('x-bare-headers', JSON.stringify(fwdHeaders));
-
-    const body = ['GET','HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
-
-    const upstream = await fetch(bareUrl, {
+    // Send to our bare server with the full absolute target URL
+    const bareReq = new Request(BARE, {
       method: 'POST',
-      headers,
-      body,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-bare-url': targetUrl.href,
+        'x-bare-method': request.method,
+      },
+      body: JSON.stringify({
+        url: targetUrl.href,
+        method: request.method,
+        headers: buildFwdHeaders(request, targetUrl),
+        body: ['GET','HEAD'].includes(request.method.toUpperCase()) ? null
+          : await request.text().catch(() => null),
+      }),
     });
 
-    if (!upstream.ok && upstream.status !== 200) {
-      const text = await upstream.text();
-      return errorPage('Server error: ' + text);
+    const bareRes = await fetch(bareReq);
+    if (!bareRes.ok) {
+      const txt = await bareRes.text().catch(() => '');
+      return errPage('Bare server error: ' + txt);
     }
 
-    const data = await upstream.json();
+    const data = await bareRes.json();
 
-    // Handle redirects
-    if (data.__redirect) {
-      const newTarget = new URL(data.location, targetUrl.href).href;
+    // Redirect
+    if (data.__redirect && data.location) {
+      const newTarget = (() => {
+        try { return new URL(data.location, targetUrl.href).href; }
+        catch { return data.location; }
+      })();
       return Response.redirect(proxyUrl(newTarget), 302);
     }
 
-    // Get the actual response
-    const { status, headers: resHdrs, body: resBody, contentType } = data;
-    const ct = contentType || '';
+    if (data.error) return errPage(data.error);
 
-    const outHeaders = new Headers();
-    if (resHdrs) {
-      for (const [k, v] of Object.entries(resHdrs)) {
-        const kl = k.toLowerCase();
-        if (['x-frame-options','content-security-policy','x-content-type-options',
-             'strict-transport-security','permissions-policy',
-             'cross-origin-opener-policy','cross-origin-embedder-policy',
-             'cross-origin-resource-policy'].includes(kl)) continue;
-        if (kl === 'set-cookie') {
-          outHeaders.append('set-cookie', v.replace(/domain=[^;]+;?/gi,'').replace(/secure;?/gi,''));
-          continue;
-        }
-        try { outHeaders.set(k, v); } catch {}
-      }
-    }
-    outHeaders.set('access-control-allow-origin', '*');
+    const status = data.status || 200;
+    const ct = data.contentType || '';
 
-    // Decode body from base64
-    let bodyBuf;
-    try { bodyBuf = Uint8Array.from(atob(resBody), c => c.charCodeAt(0)); }
-    catch { bodyBuf = new Uint8Array(0); }
+    // Decode base64 body
+    let bodyBytes;
+    try { bodyBytes = Uint8Array.from(atob(data.body || ''), c => c.charCodeAt(0)); }
+    catch { bodyBytes = new Uint8Array(0); }
 
-    const bodyText = new TextDecoder('utf-8', { fatal: false }).decode(bodyBuf);
+    const outHeaders = buildResHeaders(data.headers || {});
 
     // HTML
     if (ct.includes('text/html') || ct.includes('application/xhtml')) {
-      const rewritten = rewriteHTML(bodyText, targetUrl.href);
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(bodyBytes);
+      const rewritten = rewriteHTML(text, targetUrl.href);
       outHeaders.set('content-type', 'text/html; charset=utf-8');
       outHeaders.delete('content-length');
-      return new Response(rewritten, { status: status || 200, headers: outHeaders });
+      return new Response(rewritten, { status, headers: outHeaders });
     }
 
     // CSS
     if (ct.includes('text/css')) {
-      const rewritten = rewriteCSS(bodyText, targetUrl.href);
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(bodyBytes);
+      const rewritten = rewriteCSS(text, targetUrl.href);
       outHeaders.set('content-type', 'text/css; charset=utf-8');
       outHeaders.delete('content-length');
-      return new Response(rewritten, { status: status || 200, headers: outHeaders });
+      return new Response(rewritten, { status, headers: outHeaders });
     }
 
-    // Everything else (JS, images, fonts, etc.) — pass through raw bytes
+    // JS, images, fonts, etc — pass raw bytes
     outHeaders.delete('content-length');
-    return new Response(bodyBuf, { status: status || 200, headers: outHeaders });
+    return new Response(bodyBytes, { status, headers: outHeaders });
 
   } catch (err) {
-    return errorPage('Proxy Error: ' + err.message);
+    return errPage('Proxy Error: ' + err.message);
   }
+}
+
+function buildFwdHeaders(request, targetUrl) {
+  const out = {};
+  const skip = new Set(['host','connection','transfer-encoding','te','trailer',
+    'upgrade','proxy-authorization','proxy-connection']);
+  for (const [k, v] of request.headers.entries()) {
+    if (skip.has(k.toLowerCase())) continue;
+    if (k.toLowerCase() === 'referer') {
+      try {
+        const ref = new URL(v);
+        if (ref.pathname.startsWith(PROXY_PREFIX)) {
+          const dec = decodeUrl(ref.pathname.slice(PROXY_PREFIX.length));
+          if (dec) { out['referer'] = dec; continue; }
+        }
+      } catch {}
+    }
+    if (k.toLowerCase() === 'origin') { out['origin'] = targetUrl.origin; continue; }
+    out[k] = v;
+  }
+  out['host'] = targetUrl.host;
+  out['referer'] = out['referer'] || targetUrl.origin + '/';
+  out['origin'] = out['origin'] || targetUrl.origin;
+  return out;
+}
+
+function buildResHeaders(hdrs) {
+  const out = new Headers();
+  const strip = new Set(['x-frame-options','content-security-policy',
+    'x-content-type-options','strict-transport-security','permissions-policy',
+    'cross-origin-opener-policy','cross-origin-embedder-policy',
+    'cross-origin-resource-policy','transfer-encoding','connection']);
+  for (const [k, v] of Object.entries(hdrs)) {
+    if (strip.has(k.toLowerCase())) continue;
+    if (k.toLowerCase() === 'set-cookie') {
+      out.append('set-cookie', String(v).replace(/domain=[^;]+;?/gi,'').replace(/;\s*secure/gi,''));
+      continue;
+    }
+    try { out.set(k, v); } catch {}
+  }
+  out.set('access-control-allow-origin', '*');
+  return out;
 }
 
 // ── HTML rewriter ─────────────────────────────────────────────
 function rewriteHTML(html, base) {
   let r = html;
 
-  // Kill security meta tags
-  r = r.replace(/<meta[^>]*http-equiv\s*=\s*['"](?:content-security-policy|x-frame-options)['"][^>]*>/gi, '');
+  // Kill CSP and X-Frame-Options meta
+  r = r.replace(/<meta[^>]*http-equiv\s*=\s*['"](?:content-security-policy|x-frame-options)['"][^>]*\/?>/gi, '');
 
   // Remove frame-busting scripts
   r = r.replace(/<script(?:\s[^>]*)?>[\s\S]*?<\/script>/gi, m => {
-    const code = m.replace(/<script[^>]*>/i,'').replace(/<\/script>/i,'');
-    if (/top\s*[!=]=\s*(self|window)|top\.location|self\.location|parent\.location/i.test(code)) return '';
+    const inner = m.replace(/<script[^>]*>/i,'').replace(/<\/script>/i,'');
+    if (/top\s*[!=]=\s*(self|window)|top\.location|self\.location|parent\.location|window\.top\s*!==\s*window/i.test(inner))
+      return '';
     return m;
   });
 
-  // Rewrite href
-  r = r.replace(/(<(?:a|link|area)[^>]+\s)href\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) =>
-    /^(mailto:|tel:|javascript:|#)/.test(u) ? m : `${pre}href=${q}${rewriteUrl(u, base)}${q}`);
+  // <a href>, <link href>, <area href>
+  r = r.replace(/(<(?:a|link|area)\b[^>]*?\s)href\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) => {
+    if (/^(mailto:|tel:|javascript:|#)/.test(u)) return m;
+    return `${pre}href=${q}${rewriteUrl(u, base)}${q}`;
+  });
 
-  // Rewrite src
-  r = r.replace(/(<(?:img|script|iframe|source|audio|video|track|embed|input)[^>]+\s)src\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) =>
-    u.startsWith('data:') ? m : `${pre}src=${q}${rewriteUrl(u, base)}${q}`);
+  // src attributes
+  r = r.replace(/(<(?:img|script|iframe|source|audio|video|track|embed|input)\b[^>]*?\s)src\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) => {
+    if (u.startsWith('data:') || u.startsWith('blob:')) return m;
+    return `${pre}src=${q}${rewriteUrl(u, base)}${q}`;
+  });
 
-  // Rewrite srcset
-  r = r.replace(/srcset\s*=\s*(['"])(.*?)\1/gi, (m, q, ss) => {
-    const rw = ss.replace(/([^\s,]+)(\s+[^\s,]+)?/g, (sm, u, d) =>
-      u.startsWith('data:') ? sm : rewriteUrl(u, base) + (d || ''));
+  // srcset
+  r = r.replace(/\bsrcset\s*=\s*(['"])(.*?)\1/gi, (m, q, ss) => {
+    const rw = ss.replace(/([^\s,]+)(\s+[^\s,]+)?/g, (sm, u, d) => {
+      if (!u || u.startsWith('data:')) return sm;
+      return rewriteUrl(u, base) + (d || '');
+    });
     return `srcset=${q}${rw}${q}`;
   });
 
-  // Rewrite action
-  r = r.replace(/(<form[^>]+\s)action\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) =>
+  // form action
+  r = r.replace(/(<form\b[^>]*?\s)action\s*=\s*(['"])(.*?)\2/gi, (m, pre, q, u) =>
     `${pre}action=${q}${rewriteUrl(u, base)}${q}`);
 
-  // Rewrite inline style
-  r = r.replace(/style\s*=\s*(['"])(.*?)\1/gi, (m, q, s) =>
+  // inline style
+  r = r.replace(/\bstyle\s*=\s*(['"])(.*?)\1/gi, (m, q, s) =>
     `style=${q}${rewriteCSS(s, base)}${q}`);
 
-  // Rewrite <style> blocks
-  r = r.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, o, css, c) =>
+  // <style> blocks
+  r = r.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, o, css, c) =>
     o + rewriteCSS(css, base) + c);
 
-  // Rewrite data-src etc
+  // data-src, data-lazy, data-original etc
   r = r.replace(/\b(data-(?:src|href|lazy|original|bg|url))\s*=\s*(['"])(.*?)\2/gi, (m, attr, q, u) =>
     `${attr}=${q}${rewriteUrl(u, base)}${q}`);
 
-  // Inject interceptor
+  // meta refresh
+  r = r.replace(/(<meta[^>]*?http-equiv\s*=\s*['"]refresh['"][^>]*?content\s*=\s*['"][^'"]*?url=)(.*?)(['"])/gi,
+    (m, pre, u, q) => `${pre}${rewriteUrl(u.trim(), base)}${q}`);
+
+  // poster attribute on video
+  r = r.replace(/\bposter\s*=\s*(['"])(.*?)\1/gi, (m, q, u) =>
+    `poster=${q}${rewriteUrl(u, base)}${q}`);
+
+  // Inject runtime interceptor
   const inj = buildInterceptor(base);
-  if (r.includes('</head>')) r = r.replace('</head>', inj + '</head>');
-  else if (/<body/i.test(r)) r = r.replace(/<body[^>]*>/i, m => m + inj);
+  if (/<\/head>/i.test(r)) r = r.replace(/<\/head>/i, inj + '</head>');
+  else if (/<body\b/i.test(r)) r = r.replace(/<body\b[^>]*>/i, m => m + inj);
   else r = inj + r;
 
   return r;
 }
 
-// ── CSS rewriter ──────────────────────────────────────────────
 function rewriteCSS(css, base) {
   if (!css) return css;
   return css
@@ -227,69 +257,121 @@ function rewriteCSS(css, base) {
 
 // ── Runtime interceptor ───────────────────────────────────────
 function buildInterceptor(base) {
-  const b = base.replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$');
+  const safeBase = base.replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$');
   return `<script>
 (function(){
-  var BASE=\`${b}\`;
+  var BASE=\`${safeBase}\`;
   var PFX='${PROXY_PREFIX}';
   function enc(u){return btoa(unescape(encodeURIComponent(u))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=/g,'');}
-  function abs(h){if(!h||/^(javascript:|mailto:|tel:|#|blob:|data:)/.test(h))return null;try{return new URL(h,BASE).href;}catch{return null;}}
+  function abs(h){
+    if(!h||/^(javascript:|mailto:|tel:|#|blob:|data:)/.test(h))return null;
+    try{return new URL(h,BASE).href;}catch(e){return null;}
+  }
   function px(u){var a=abs(u);return a?PFX+enc(a):u;}
   function nav(u){var a=abs(u);if(!a)return;try{window.top.postMessage({type:'MP_NAV',url:a},'*');}catch(e){}}
 
+  // Anti frame-bust
   try{
     Object.defineProperty(window,'top',{get:function(){return window;},configurable:true});
     Object.defineProperty(window,'parent',{get:function(){return window;},configurable:true});
     Object.defineProperty(window,'frameElement',{get:function(){return null;},configurable:true});
   }catch(e){}
 
+  // Click interceptor — smart, doesn't break game buttons
   document.addEventListener('click',function(e){
     var t=e.target;
-    if(!t||['CANVAS','VIDEO','BUTTON','INPUT','TEXTAREA'].includes(t.tagName))return;
-    var el=t; while(el&&el.tagName!=='A')el=el.parentElement;
+    if(!t||['CANVAS','VIDEO','BUTTON','INPUT','TEXTAREA','SELECT'].includes(t.tagName))return;
+    var el=t;
+    while(el&&el.tagName!=='A')el=el.parentElement;
     if(!el)return;
     var h=el.getAttribute('href')||'';
     if(!h||/^(javascript:|#)/.test(h))return;
     if(el.onclick||el.getAttribute('onclick'))return;
     if(el.getAttribute('role')==='button')return;
-    var a=abs(h); if(!a)return;
+    var a=abs(h);if(!a)return;
     try{var d=new URL(a),here=new URL(location.href);if(d.hostname===here.hostname)return;}catch(x){}
     e.preventDefault();e.stopPropagation();nav(a);
   },true);
 
+  // window.open
   var _open=window.open;
-  window.open=function(u){var a=abs(u);if(a){nav(a);return{focus:function(){},closed:false,postMessage:function(){}};}return _open.apply(this,arguments);};
+  window.open=function(u){
+    var a=abs(u);
+    if(a){nav(a);return{focus:function(){},blur:function(){},closed:false,postMessage:function(){},location:{href:''}};}
+    return _open.apply(this,arguments);
+  };
 
+  // fetch intercept
   var _fetch=window.fetch;
   if(_fetch)window.fetch=function(input,init){
     try{
       var u=typeof input==='string'?input:(input&&input.url?input.url:null);
-      if(u){var a=abs(u);if(a&&!a.startsWith(location.origin))input=typeof input==='string'?px(u):new Request(px(u),input);}
+      if(u){
+        var a=abs(u);
+        if(a&&!a.startsWith(location.origin)){
+          input=typeof input==='string'?px(u):new Request(px(u),input);
+        }
+      }
     }catch(e){}
     return _fetch.call(this,input,init);
   };
 
+  // XHR intercept
   var _xo=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m,u){
-    try{var a=abs(u);if(a&&!a.startsWith(location.origin))u=px(a);}catch(e){}
-    var args=Array.prototype.slice.call(arguments);args[1]=u;return _xo.apply(this,args);
+    try{
+      var a=abs(typeof u==='string'?u:'');
+      if(a&&!a.startsWith(location.origin))u=px(a);
+    }catch(e){}
+    var args=Array.prototype.slice.call(arguments);args[1]=u;
+    return _xo.apply(this,args);
   };
 
-  try{window.location.assign=function(u){nav(u);};window.location.replace=function(u){nav(u);};}catch(e){}
+  // location navigation
+  try{
+    window.location.assign=function(u){nav(u);};
+    window.location.replace=function(u){nav(u);};
+  }catch(e){}
 
+  // history API
   var _ps=history.pushState.bind(history),_rs=history.replaceState.bind(history);
-  history.pushState=function(s,t,u){if(u)try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}return _ps.apply(this,arguments);};
-  history.replaceState=function(s,t,u){if(u)try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}return _rs.apply(this,arguments);};
+  history.pushState=function(s,t,u){
+    if(u)try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}
+    return _ps.apply(this,arguments);
+  };
+  history.replaceState=function(s,t,u){
+    if(u)try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}
+    return _rs.apply(this,arguments);
+  };
 
-  new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-    if(n.nodeType!==1)return;
-    ['src','data-src','data-lazy','data-original'].forEach(function(a){
-      if(!n.hasAttribute||!n.hasAttribute(a))return;
-      var v=n.getAttribute(a);if(v&&v.startsWith('http')&&!v.startsWith(location.origin))n.setAttribute(a,px(v));
+  // MutationObserver for lazy-loaded content
+  new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1)return;
+        ['src','data-src','data-lazy','data-original','data-bg'].forEach(function(a){
+          if(!n.hasAttribute||!n.hasAttribute(a))return;
+          var v=n.getAttribute(a);
+          if(v&&v.startsWith('http')&&!v.startsWith(location.origin))
+            n.setAttribute(a,px(v));
+        });
+        if(n.querySelectorAll){
+          n.querySelectorAll('[data-src],[data-lazy],[data-original]').forEach(function(el){
+            ['data-src','data-lazy','data-original'].forEach(function(a){
+              var v=el.getAttribute(a);
+              if(v&&v.startsWith('http')&&!v.startsWith(location.origin))
+                el.setAttribute(a,px(v));
+            });
+          });
+        }
+      });
     });
-  });});}).observe(document.documentElement,{childList:true,subtree:true});
+  }).observe(document.documentElement,{childList:true,subtree:true});
 
-  function report(){try{window.top.postMessage({type:'MP_TITLE',title:document.title,url:BASE},'*');}catch(e){}}
+  // Report title to parent frame
+  function report(){
+    try{window.top.postMessage({type:'MP_TITLE',title:document.title,url:BASE},'*');}catch(e){}
+  }
   document.addEventListener('DOMContentLoaded',report);
   window.addEventListener('load',report);
   setTimeout(report,500);
@@ -297,10 +379,14 @@ function buildInterceptor(base) {
 <\/script>`;
 }
 
-function errorPage(msg) {
-  return new Response(`<!DOCTYPE html><html><head><title>Proxy Error</title>
-<style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:500px;margin:0 auto}
-h2{color:#e94560;margin-bottom:12px}p{color:#9a9abf;line-height:1.6}a{color:#4d9de0}</style></head><body>
-<h2>⚠ Proxy Error</h2><p>${msg}</p><p><a href="javascript:history.back()">← Go back</a></p>
-</body></html>`, { status: 502, headers: { 'content-type': 'text/html' } });
+function errPage(msg) {
+  return new Response(
+    `<!DOCTYPE html><html><head><title>Proxy Error</title>
+    <style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:500px;margin:0 auto}
+    h2{color:#e94560;margin-bottom:12px}p{color:#9a9abf;line-height:1.6}a{color:#4d9de0}
+    .err{background:#1a0808;border:1px solid #e94560;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px}</style></head><body>
+    <h2>⚠ Proxy Error</h2><div class="err">${msg}</div>
+    <p><a href="javascript:history.back()">← Go back</a></p></body></html>`,
+    { status: 502, headers: { 'content-type': 'text/html; charset=utf-8' } }
+  );
 }
