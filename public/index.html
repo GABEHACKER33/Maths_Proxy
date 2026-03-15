@@ -784,10 +784,10 @@ function newTab(url) {
   const id = genId();
   const tab = {
     id,
-    title: 'New Tab',
-    favicon: '🔍',
+    title: 'Maths Proxy',
+    favicon: '🔒',
     url: url || '',
-    type: 'home', // 'home' | 'search' | 'proxy'
+    type: 'home',
     history: [],
     historyIdx: -1,
   };
@@ -1036,8 +1036,9 @@ function showProxyPage(tabId, url) {
         <div class="load-url">${esc(url)}</div>
       </div>
       <div class="proxy-frame-wrap">
-        <iframe class="proxy-frame" id="frame-${tabId}" src="/proxy?url=${encodeURIComponent(url)}"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+        <iframe class="proxy-frame" id="frame-${tabId}"
+          src="/proxy?url=${encodeURIComponent(url)}"
+
           onload="onFrameLoad(${tabId})"
           onerror="onFrameError(${tabId})">
         </iframe>
@@ -1236,6 +1237,44 @@ function updateTabEl(id, { title, favicon }) {
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── postMessage listener (iframe → parent navigation) ──────
+window.addEventListener('message', function(e) {
+  const data = e.data;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'MP_NAV' && data.url) {
+    // Find which tab owns this iframe
+    const frame = [...document.querySelectorAll('.proxy-frame')]
+      .find(f => f.contentWindow === e.source);
+    if (frame) {
+      const tabId = parseInt(frame.id.replace('frame-', ''));
+      if (!isNaN(tabId)) {
+        navigateTab(tabId, data.url);
+        return;
+      }
+    }
+    // Fallback: navigate active tab
+    const tab = getActiveTab();
+    if (tab) navigateTab(tab.id, data.url);
+  }
+
+  if (data.type === 'MP_TITLE' && data.title) {
+    const frame = [...document.querySelectorAll('.proxy-frame')]
+      .find(f => f.contentWindow === e.source);
+    if (frame) {
+      const tabId = parseInt(frame.id.replace('frame-', ''));
+      if (!isNaN(tabId)) {
+        updateTabEl(tabId, { title: data.title.slice(0, 40) });
+        const tab = tabs.find(t => t.id === tabId);
+        if (tab) {
+          tab.title = data.title.slice(0, 40);
+          if (data.url) addToHistory(tab.url, tab.title);
+        }
+      }
+    }
+  }
+});
 
 // ── Init ───────────────────────────────────────────────────
 newTab();
