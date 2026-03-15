@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Maths Proxy</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: arial, sans-serif;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 16px 20px;
+      gap: 12px;
+    }
+
+    header a {
+      font-size: 13px;
+      color: #202124;
+      text-decoration: none;
+    }
+
+    header a:hover { text-decoration: underline; }
+
+    header .sign-in {
+      background: #1a73e8;
+      color: white;
+      padding: 9px 23px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    header .sign-in:hover {
+      background: #1765cc;
+      text-decoration: none;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding-bottom: 100px;
+    }
+
+    .logo {
+      font-size: 72px;
+      font-weight: 700;
+      margin-bottom: 28px;
+      letter-spacing: -2px;
+    }
+
+    .logo span:nth-child(1) { color: #4285F4; }
+    .logo span:nth-child(2) { color: #EA4335; }
+    .logo span:nth-child(3) { color: #FBBC05; }
+    .logo span:nth-child(4) { color: #4285F4; }
+    .logo span:nth-child(5) { color: #34A853; }
+    .logo span:nth-child(6) { color: #EA4335; }
+    .logo span:nth-child(7) { color: #FBBC05; }
+    .logo span:nth-child(8) { color: #4285F4; }
+    .logo span:nth-child(9) { color: #34A853; }
+    .logo span:nth-child(10) { color: #EA4335; }
+    .logo span:nth-child(11) { color: #4285F4; }
+
+    .search-wrapper {
+      width: 100%;
+      max-width: 584px;
+      position: relative;
+    }
+
+    .search-box {
+      width: 100%;
+      padding: 12px 52px 12px 20px;
+      border: 1px solid #dfe1e5;
+      border-radius: 24px;
+      font-size: 16px;
+      outline: none;
+      color: #202124;
+      box-shadow: none;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .search-box:hover,
+    .search-box:focus {
+      box-shadow: 0 1px 6px rgba(32,33,36,0.28);
+      border-color: rgba(223,225,229,0);
+    }
+
+    .search-icon {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9aa0a6;
+      cursor: pointer;
+    }
+
+    .search-icon:hover { color: #4285F4; }
+
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 28px;
+      justify-content: center;
+    }
+
+    .buttons button {
+      background: #f8f9fa;
+      border: 1px solid #f8f9fa;
+      border-radius: 4px;
+      color: #3c4043;
+      font-size: 14px;
+      padding: 9px 20px;
+      cursor: pointer;
+    }
+
+    .buttons button:hover {
+      box-shadow: 0 1px 3px rgba(60,64,67,0.3);
+      border-color: #dadce0;
+      background: #f8f9fa;
+    }
+
+    footer {
+      background: #f2f2f2;
+      border-top: 1px solid #e4e4e4;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #70757a;
+    }
+
+    footer a {
+      color: #70757a;
+      text-decoration: none;
+      margin-left: 20px;
+    }
+
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="#">About</a>
+    <a href="#">Store</a>
+    <a href="#" class="sign-in">Sign in</a>
+  </header>
+
+  <main>
+    <div class="logo">
+      <span>M</span><span>a</span><span>t</span><span>h</span><span>s</span>
+      <span> </span>
+      <span>P</span><span>r</span><span>o</span><span>x</span><span>y</span>
+    </div>
+
+    <div class="search-wrapper">
+      <input
+        class="search-box"
+        type="text"
+        placeholder=""
+        id="searchInput"
+        autocomplete="off"
+      />
+      <svg class="search-icon" onclick="doSearch()" xmlns="http://www.w3.org/2000/svg"
+        width="20" height="20" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </div>
+
+    <div class="buttons">
+      <button onclick="doSearch()">Maths Proxy Search</button>
+      <button onclick="feelingLucky()">I'm Feeling Lucky</button>
+    </div>
+  </main>
+
+  <footer>
+    <div>Spain</div>
+    <div>
+      <a href="#">Advertising</a>
+      <a href="#">Privacy</a>
+      <a href="#">Terms</a>
+    </div>
+  </footer>
+
+  <script>
+    const input = document.getElementById('searchInput');
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    function doSearch() {
+      const q = input.value.trim();
+      if (!q) return;
+      window.location.href = `/api/proxy?q=${encodeURIComponent(q)}`;
+    }
+
+    function feelingLucky() {
+      const q = input.value.trim();
+      if (!q) return;
+      window.location.href = `/api/proxy?q=${encodeURIComponent(q)}&lucky=1`;
+    }
+  </script>
+
+</body>
+</html>
