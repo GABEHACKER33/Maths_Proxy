@@ -170,13 +170,72 @@ app.get('/proxy', async (req, res) => {
       }
     });
 
-    // Anti frame-bust
+    // Anti frame-bust + link interceptor
     $('head').prepend(`<script>
-      try {
-        Object.defineProperty(window,'top',{get:()=>window,configurable:true});
-        Object.defineProperty(window,'parent',{get:()=>window,configurable:true});
-        Object.defineProperty(window,'frameElement',{get:()=>null,configurable:true});
-      } catch(e){}
+      (function(){
+        try {
+          Object.defineProperty(window,'top',{get:()=>window,configurable:true});
+          Object.defineProperty(window,'parent',{get:()=>window,configurable:true});
+          Object.defineProperty(window,'frameElement',{get:()=>null,configurable:true});
+        } catch(e){}
+
+        var BASE = '${finalUrl}';
+
+        function toAbs(href) {
+          if (!href) return null;
+          if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) return null;
+          try { return new URL(href, BASE).href; } catch { return null; }
+        }
+
+        function sendNav(url) {
+          try { window.top.postMessage({type:'MP_NAV', url:url}, '*'); } catch(e){}
+        }
+
+        // Intercept all link clicks
+        document.addEventListener('click', function(e) {
+          var el = e.target;
+          // Walk up to find <a>
+          while (el && el.tagName !== 'A') el = el.parentElement;
+          if (!el || !el.href) return;
+          var abs = toAbs(el.getAttribute('href'));
+          if (!abs || !abs.startsWith('http')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          sendNav(abs);
+        }, true);
+
+        // Intercept window.open
+        var origOpen = window.open;
+        window.open = function(url) {
+          var abs = toAbs(url);
+          if (abs && abs.startsWith('http')) { sendNav(abs); return null; }
+          return origOpen.apply(this, arguments);
+        };
+
+        // Intercept location changes
+        var origAssign = window.location.assign.bind(window.location);
+        var origReplace = window.location.replace.bind(window.location);
+        try {
+          window.location.assign = function(url) {
+            var abs = toAbs(url);
+            if (abs && abs.startsWith('http')) { sendNav(abs); return; }
+            origAssign(url);
+          };
+          window.location.replace = function(url) {
+            var abs = toAbs(url);
+            if (abs && abs.startsWith('http')) { sendNav(abs); return; }
+            origReplace(url);
+          };
+        } catch(e){}
+
+        // Report page title changes to parent
+        document.addEventListener('DOMContentLoaded', function() {
+          try { window.top.postMessage({type:'MP_TITLE', title: document.title, url: window.location.href}, '*'); } catch(e){}
+        });
+        window.addEventListener('load', function() {
+          try { window.top.postMessage({type:'MP_TITLE', title: document.title, url: window.location.href}, '*'); } catch(e){}
+        });
+      })();
     </script>`);
 
     res.removeHeader('X-Frame-Options');
