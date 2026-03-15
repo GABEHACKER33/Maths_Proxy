@@ -15,57 +15,68 @@ if (RENDER_URL) {
 }
 app.get('/ping', (_, res) => res.send('pong'));
 
+// ── Helpers ───────────────────────────────────────────────────
+function toProxyUrl(val, base) {
+  if (!val) return val;
+  const t = val.trim();
+  if (t.startsWith('data:') || t.startsWith('javascript:') || t.startsWith('#') ||
+      t.startsWith('mailto:') || t.startsWith('tel:') || t.startsWith('blob:') ||
+      t.startsWith('/proxy?') || t.startsWith('/search?')) return t;
+  try {
+    const abs = new URL(t, base).href;
+    if (!abs.startsWith('http')) return t;
+    return `/proxy?url=${encodeURIComponent(abs)}`;
+  } catch { return t; }
+}
+
+function rewriteCSS(css, base) {
+  if (!css) return css;
+  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (match, q, url) => {
+    const p = toProxyUrl(url.trim(), base);
+    return `url(${q}${p}${q})`;
+  });
+}
+
 // ── DuckDuckGo Search ─────────────────────────────────────────
 app.get('/search', async (req, res) => {
   const q = req.query.q;
   if (!q) return res.json({ results: [] });
-
   try {
-    const response = await fetch(
+    const r = await fetch(
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}&kl=es-es`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-          'Referer': 'https://duckduckgo.com/',
-        },
-      }
+      { headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Referer': 'https://duckduckgo.com/',
+      }}
     );
-
-    const html = await response.text();
+    const html = await r.text();
     const $ = cheerio.load(html);
     const results = [];
-
     $('.result:not(.result--ad)').each((i, el) => {
       if (i >= 12) return false;
       const titleEl = $(el).find('.result__title a');
-      const snippetEl = $(el).find('.result__snippet');
-      const urlEl = $(el).find('.result__url');
+      const snippet = $(el).find('.result__snippet').text().trim();
+      const displayUrl = $(el).find('.result__url').text().trim();
       const title = titleEl.text().trim();
-      const snippet = snippetEl.text().trim();
       const rawHref = titleEl.attr('href') || '';
-      const displayUrl = urlEl.text().trim();
-
       let url = '';
       try {
         const u = new URL('https://duckduckgo.com' + rawHref);
         url = u.searchParams.get('uddg') || u.searchParams.get('u') || rawHref;
         if (url.startsWith('//')) url = 'https:' + url;
       } catch { url = rawHref; }
-
-      if (title && url && url.startsWith('http') && !url.includes('duckduckgo.com')) {
+      if (title && url && url.startsWith('http') && !url.includes('duckduckgo.com'))
         results.push({ title, snippet, url, display: displayUrl });
-      }
     });
-
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message, results: [] });
   }
 });
 
-// ── Web Proxy ─────────────────────────────────────────────────
+// ── Web Proxy GET ─────────────────────────────────────────────
 app.get('/proxy', async (req, res) => {
   const rawUrl = req.query.url;
   if (!rawUrl) return res.status(400).send('Missing url');
@@ -75,210 +86,362 @@ app.get('/proxy', async (req, res) => {
     targetUrl = decodeURIComponent(rawUrl);
     if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
     new URL(targetUrl);
-  } catch {
-    return res.status(400).send('Invalid URL');
-  }
+  } catch { return res.status(400).send('Invalid URL'); }
 
-  // Special handling for known blocked sites
-  const BLOCKED = ['spotify.com', 'instagram.com', 'tiktok.com', 'facebook.com', 'twitter.com', 'x.com'];
+  const BLOCKED = ['spotify.com','instagram.com','tiktok.com','facebook.com','twitter.com','x.com'];
   const parsed = new URL(targetUrl);
-  const isBlocked = BLOCKED.some(d => parsed.hostname.includes(d));
-
-  if (isBlocked) {
+  if (BLOCKED.some(d => parsed.hostname.includes(d)))
     return res.send(blockedPage(targetUrl, parsed.hostname));
-  }
 
   try {
-    const response = await fetch(targetUrl, {
+    const upstream = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
         'Accept-Encoding': 'identity',
+        'Cache-Control': 'no-cache',
         'Referer': parsed.origin,
         'Origin': parsed.origin,
       },
       redirect: 'follow',
     });
 
-    const contentType = response.headers.get('content-type') || '';
-    const finalUrl = response.url || targetUrl;
+    const ct = upstream.headers.get('content-type') || '';
+    const finalUrl = upstream.url || targetUrl;
+    const finalOrigin = new URL(finalUrl).origin;
 
-    // Pass-through binary
-    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-      res.set('Content-Type', contentType);
-      res.removeHeader('X-Frame-Options');
-      res.removeHeader('Content-Security-Policy');
-      response.body.pipe(res);
+    const strip = () => {
+      ['x-frame-options','content-security-policy','x-content-type-options',
+       'strict-transport-security','permissions-policy'].forEach(h => res.removeHeader(h));
+      res.set('Access-Control-Allow-Origin', '*');
+    };
+
+    // CSS
+    if (ct.includes('text/css')) {
+      strip();
+      res.set('Content-Type', 'text/css; charset=utf-8');
+      res.send(rewriteCSS(await upstream.text(), finalUrl));
       return;
     }
 
-    const html = await response.text();
+    // JS — pass through
+    if (ct.includes('javascript') || ct.includes('ecmascript')) {
+      strip();
+      res.set('Content-Type', 'application/javascript; charset=utf-8');
+      res.send(await upstream.text());
+      return;
+    }
+
+    // Binary / images / fonts / media
+    if (!ct.includes('text/html') && !ct.includes('application/xhtml')) {
+      strip();
+      res.set('Content-Type', ct);
+      upstream.body.pipe(res);
+      return;
+    }
+
+    // ── HTML ──────────────────────────────────────────────────
+    const html = await upstream.text();
     const $ = cheerio.load(html);
 
-    const toProxy = (val, base) => {
-      if (!val || val.startsWith('data:') || val.startsWith('javascript:') || val.startsWith('#') || val.startsWith('mailto:')) return val;
-      try {
-        const abs = new URL(val, base).href;
-        return `/proxy?url=${encodeURIComponent(abs)}`;
-      } catch { return val; }
-    };
+    // Kill security meta tags
+    $('meta[http-equiv]').each((_, el) => {
+      const v = ($(el).attr('http-equiv') || '').toLowerCase();
+      if (v === 'x-frame-options' || v === 'content-security-policy') $(el).remove();
+    });
 
-    // Rewrite links — navigate inside proxy
+    // Remove frame-busting inline scripts
+    $('script:not([src])').each((_, el) => {
+      const code = $(el).html() || '';
+      if (/top\s*[!=]=\s*(self|window)|top\.location|self\.location|parent\.location|window\.top\s*!==\s*window/i.test(code))
+        $(el).remove();
+    });
+
+    // Rewrite <a href>
     $('a[href]').each((_, el) => {
-      const href = $(el).attr('href');
+      const href = $(el).attr('href') || '';
+      if (/^(mailto:|tel:|#|javascript:)/.test(href)) return;
       try {
         const abs = new URL(href, finalUrl).href;
         if (abs.startsWith('http')) $(el).attr('href', `/proxy?url=${encodeURIComponent(abs)}`);
       } catch {}
     });
 
+    // Rewrite all src attributes
     $('[src]').each((_, el) => {
-      const p = toProxy($(el).attr('src'), finalUrl);
-      if (p) $(el).attr('src', p);
+      const src = $(el).attr('src');
+      if (!src) return;
+      const p = toProxyUrl(src, finalUrl);
+      if (p !== src) $(el).attr('src', p);
     });
 
+    // Rewrite <link href>
     $('link[href]').each((_, el) => {
-      const p = toProxy($(el).attr('href'), finalUrl);
-      if (p) $(el).attr('href', p);
+      const href = $(el).attr('href');
+      if (!href) return;
+      const p = toProxyUrl(href, finalUrl);
+      if (p !== href) $(el).attr('href', p);
     });
 
+    // Rewrite srcset
     $('[srcset]').each((_, el) => {
-      const rewritten = ($(el).attr('srcset') || '').replace(/([^\s,]+)(\s+[^\s,]+)?/g, (match, u, d) => {
-        if (!u || u.startsWith('data:')) return match;
-        try { return `/proxy?url=${encodeURIComponent(new URL(u, finalUrl).href)}${d || ''}`; }
-        catch { return match; }
+      const rewritten = ($(el).attr('srcset') || '').replace(/([^\s,]+)(\s+[^\s,]+)?/g, (m, u, d) => {
+        if (!u || u.startsWith('data:')) return m;
+        try { return `/proxy?url=${encodeURIComponent(new URL(u, finalUrl).href)}${d||''}`; }
+        catch { return m; }
       });
       $(el).attr('srcset', rewritten);
     });
 
-    $('form[action]').each((_, el) => {
-      try {
-        const abs = new URL($(el).attr('action'), finalUrl).href;
-        $(el).attr('action', `/proxy?url=${encodeURIComponent(abs)}`);
-      } catch {}
-    });
-
-    // Remove CSP/frame headers
-    $('meta[http-equiv="X-Frame-Options"], meta[http-equiv="Content-Security-Policy"], meta[http-equiv="x-frame-options"]').remove();
-
-    // Remove frame-busting scripts
-    $('script').each((_, el) => {
-      const code = $(el).html() || '';
-      if (code.includes('top.location') || code.includes('self.location') || code.includes('window.top !== window.self')) {
-        $(el).remove();
+    // Rewrite <form action>
+    $('form').each((_, el) => {
+      const action = $(el).attr('action');
+      if (action) {
+        try {
+          const abs = new URL(action, finalUrl).href;
+          $(el).attr('action', `/proxy?url=${encodeURIComponent(abs)}`);
+        } catch {}
       }
     });
 
-    // Anti frame-bust + link interceptor
-    $('head').prepend(`<script>
-      (function(){
+    // Rewrite inline style url()
+    $('[style]').each((_, el) => {
+      const s = $(el).attr('style') || '';
+      const r = rewriteCSS(s, finalUrl);
+      if (r !== s) $(el).attr('style', r);
+    });
+
+    // Rewrite <style> blocks
+    $('style').each((_, el) => {
+      const css = $(el).html() || '';
+      const r = rewriteCSS(css, finalUrl);
+      if (r !== css) $(el).html(r);
+    });
+
+    // Rewrite lazy-load attributes
+    ['data-src','data-href','data-lazy','data-original','data-url'].forEach(attr => {
+      $(`[${attr}]`).each((_, el) => {
+        const v = $(el).attr(attr);
+        if (!v) return;
+        const p = toProxyUrl(v, finalUrl);
+        if (p !== v) $(el).attr(attr, p);
+      });
+    });
+
+    // Rewrite <meta> refresh
+    $('meta[http-equiv="refresh"]').each((_, el) => {
+      const content = $(el).attr('content') || '';
+      const m = content.match(/^(\d+;\s*url=)(.+)$/i);
+      if (m) {
         try {
-          Object.defineProperty(window,'top',{get:()=>window,configurable:true});
-          Object.defineProperty(window,'parent',{get:()=>window,configurable:true});
-          Object.defineProperty(window,'frameElement',{get:()=>null,configurable:true});
-        } catch(e){}
+          const abs = new URL(m[2].trim(), finalUrl).href;
+          $(el).attr('content', `${m[1]}/proxy?url=${encodeURIComponent(abs)}`);
+        } catch {}
+      }
+    });
 
-        var BASE = '${finalUrl}';
+    // Rewrite background= attribute
+    $('[background]').each((_, el) => {
+      const v = $(el).attr('background');
+      const p = toProxyUrl(v, finalUrl);
+      if (p !== v) $(el).attr('background', p);
+    });
 
-        function toAbs(href) {
-          if (!href) return null;
-          if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('#')) return null;
-          try { return new URL(href, BASE).href; } catch { return null; }
-        }
+    // ── Inject interceptor script (first in <head>) ──────────
+    const interceptor = buildInterceptor(finalUrl, finalOrigin);
+    if ($('head').length) $('head').prepend(interceptor);
+    else $.root().prepend(interceptor);
 
-        function sendNav(url) {
-          try { window.top.postMessage({type:'MP_NAV', url:url}, '*'); } catch(e){}
-        }
-
-        // Intercept all link clicks
-        document.addEventListener('click', function(e) {
-          var el = e.target;
-          // Walk up to find <a>
-          while (el && el.tagName !== 'A') el = el.parentElement;
-          if (!el || !el.href) return;
-          var abs = toAbs(el.getAttribute('href'));
-          if (!abs || !abs.startsWith('http')) return;
-          e.preventDefault();
-          e.stopPropagation();
-          sendNav(abs);
-        }, true);
-
-        // Intercept window.open
-        var origOpen = window.open;
-        window.open = function(url) {
-          var abs = toAbs(url);
-          if (abs && abs.startsWith('http')) { sendNav(abs); return null; }
-          return origOpen.apply(this, arguments);
-        };
-
-        // Intercept location changes
-        var origAssign = window.location.assign.bind(window.location);
-        var origReplace = window.location.replace.bind(window.location);
-        try {
-          window.location.assign = function(url) {
-            var abs = toAbs(url);
-            if (abs && abs.startsWith('http')) { sendNav(abs); return; }
-            origAssign(url);
-          };
-          window.location.replace = function(url) {
-            var abs = toAbs(url);
-            if (abs && abs.startsWith('http')) { sendNav(abs); return; }
-            origReplace(url);
-          };
-        } catch(e){}
-
-        // Report page title changes to parent
-        document.addEventListener('DOMContentLoaded', function() {
-          try { window.top.postMessage({type:'MP_TITLE', title: document.title, url: window.location.href}, '*'); } catch(e){}
-        });
-        window.addEventListener('load', function() {
-          try { window.top.postMessage({type:'MP_TITLE', title: document.title, url: window.location.href}, '*'); } catch(e){}
-        });
-      })();
-    </script>`);
-
-    res.removeHeader('X-Frame-Options');
-    res.removeHeader('Content-Security-Policy');
-    res.removeHeader('x-frame-options');
+    strip();
     res.set('Content-Type', 'text/html; charset=utf-8');
-    // Pass final URL so client can update address bar
-    res.set('X-Proxy-Final-Url', finalUrl);
     res.send($.html());
 
+  } catch (err) {
+    console.error('Proxy error:', err.message);
+    res.status(500).send(errorPage(targetUrl, err.message));
+  }
+});
+
+// ── Web Proxy POST (form submissions) ────────────────────────
+app.post('/proxy', express.urlencoded({ extended: true }), async (req, res) => {
+  const rawUrl = req.query.url;
+  if (!rawUrl) return res.status(400).send('Missing url');
+  let targetUrl;
+  try {
+    targetUrl = decodeURIComponent(rawUrl);
+    if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
+  } catch { return res.status(400).send('Invalid URL'); }
+  try {
+    const parsed = new URL(targetUrl);
+    const upstream = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 Chrome/122.0.0.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': parsed.origin,
+        'Origin': parsed.origin,
+      },
+      body: new URLSearchParams(req.body).toString(),
+      redirect: 'follow',
+    });
+    if (upstream.redirected) {
+      return res.redirect(`/proxy?url=${encodeURIComponent(upstream.url)}`);
+    }
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(await upstream.text());
   } catch (err) {
     res.status(500).send(errorPage(targetUrl, err.message));
   }
 });
 
+// ── Interceptor script ────────────────────────────────────────
+function buildInterceptor(finalUrl, finalOrigin) {
+  return `<script>
+(function(){
+  var BASE='${finalUrl.replace(/'/g,"\\'")}';
+  var ORIGIN='${finalOrigin.replace(/'/g,"\\'")}';
+
+  // Anti frame-bust
+  try{
+    Object.defineProperty(window,'top',{get:function(){return window;},configurable:true});
+    Object.defineProperty(window,'parent',{get:function(){return window;},configurable:true});
+    Object.defineProperty(window,'frameElement',{get:function(){return null;},configurable:true});
+  }catch(e){}
+
+  function toAbs(href){
+    if(!href||/^(javascript:|mailto:|tel:|#|blob:)/.test(href)) return null;
+    try{return new URL(href,BASE).href;}catch(e){return null;}
+  }
+  function px(url){
+    var a=toAbs(url);
+    return a?'/proxy?url='+encodeURIComponent(a):url;
+  }
+  function nav(url){
+    var a=toAbs(url);
+    if(!a) return;
+    try{window.top.postMessage({type:'MP_NAV',url:a},'*');}catch(e){}
+  }
+
+  // Click interceptor
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    while(el&&el.tagName!=='A') el=el.parentElement;
+    if(!el) return;
+    var href=el.getAttribute('href')||'';
+    if(/^(javascript:|#)/.test(href)) return;
+    var a=toAbs(href);
+    if(!a) return;
+    e.preventDefault();e.stopPropagation();
+    nav(a);
+  },true);
+
+  // window.open
+  var _open=window.open;
+  window.open=function(url){
+    var a=toAbs(url);
+    if(a){nav(a);return{focus:function(){},closed:false,postMessage:function(){}};}
+    return _open.apply(this,arguments);
+  };
+
+  // fetch
+  var _fetch=window.fetch;
+  if(_fetch) window.fetch=function(input,init){
+    try{
+      if(typeof input==='string'&&input.startsWith('http')&&!input.startsWith(location.origin))
+        input='/proxy?url='+encodeURIComponent(input);
+      else if(input&&typeof input==='object'&&input.url&&input.url.startsWith('http')&&!input.url.startsWith(location.origin))
+        input=new Request('/proxy?url='+encodeURIComponent(input.url),input);
+    }catch(e){}
+    return _fetch.call(this,input,init);
+  };
+
+  // XMLHttpRequest
+  var _xhr=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m,url){
+    try{
+      if(typeof url==='string'&&url.startsWith('http')&&!url.startsWith(location.origin))
+        url='/proxy?url='+encodeURIComponent(url);
+    }catch(e){}
+    var a=Array.prototype.slice.call(arguments);a[1]=url;
+    return _xhr.apply(this,a);
+  };
+
+  // location.assign/replace
+  try{
+    window.location.assign=function(u){nav(u);};
+    window.location.replace=function(u){nav(u);};
+  }catch(e){}
+
+  // history.pushState/replaceState
+  var _ps=history.pushState.bind(history);
+  var _rs=history.replaceState.bind(history);
+  history.pushState=function(s,t,u){
+    if(u){try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}}
+    return _ps.apply(this,arguments);
+  };
+  history.replaceState=function(s,t,u){
+    if(u){try{window.top.postMessage({type:'MP_URL',url:new URL(u,BASE).href},'*');}catch(e){}}
+    return _rs.apply(this,arguments);
+  };
+
+  // MutationObserver — fix lazy-loaded resources
+  new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1) return;
+        ['src','data-src','data-lazy','data-original'].forEach(function(a){
+          if(!n.hasAttribute(a)) return;
+          var v=n.getAttribute(a);
+          if(v&&v.startsWith('http')&&!v.startsWith(location.origin))
+            n.setAttribute(a,'/proxy?url='+encodeURIComponent(v));
+        });
+        if(n.querySelectorAll) n.querySelectorAll('[data-src],[data-lazy],[data-original]').forEach(function(el){
+          ['data-src','data-lazy','data-original'].forEach(function(a){
+            var v=el.getAttribute(a);
+            if(v&&v.startsWith('http')&&!v.startsWith(location.origin))
+              el.setAttribute(a,'/proxy?url='+encodeURIComponent(v));
+          });
+        });
+      });
+    });
+  }).observe(document.documentElement,{childList:true,subtree:true});
+
+  // Report title
+  function report(){
+    try{window.top.postMessage({type:'MP_TITLE',title:document.title,url:BASE},'*');}catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded',report);
+  window.addEventListener('load',report);
+  setTimeout(report,800);
+})();
+</script>`;
+}
+
 function blockedPage(url, hostname) {
-  return `<!DOCTYPE html><html><head><title>Site blocked - Maths Proxy</title>
-  <style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:560px;margin:0 auto;text-align:center}
-  h2{color:#e94560;font-size:22px;margin-bottom:12px}.icon{font-size:48px;margin-bottom:20px}
-  p{color:#9a9abf;line-height:1.7;margin-bottom:8px}.url{background:#13132a;padding:8px 14px;border-radius:6px;color:#f5a623;font-size:13px;margin:16px 0;display:inline-block}
-  a{color:#4d9de0}.tip{background:#0f1a2e;border:1px solid #1e3a5f;border-radius:8px;padding:16px;margin-top:24px;text-align:left;font-size:13px;color:#6b9fcf}
+  return `<!DOCTYPE html><html><head><title>Blocked</title>
+  <style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:540px;margin:0 auto;text-align:center}
+  h2{color:#e94560;margin-bottom:12px}.icon{font-size:48px;margin-bottom:20px}p{color:#9a9abf;line-height:1.7}
+  .url{background:#13132a;padding:8px 14px;border-radius:6px;color:#f5a623;font-size:12px;margin:16px 0;display:inline-block;word-break:break-all}
+  a{color:#4d9de0}.tip{background:#0f1a2e;border:1px solid #1e3a5f;border-radius:8px;padding:14px 16px;margin-top:20px;text-align:left;font-size:13px;color:#6b9fcf;line-height:1.6}
   </style></head><body>
-  <div class="icon">🔒</div>
-  <h2>Blocked by ${hostname}</h2>
+  <div class="icon">🔒</div><h2>Blocked by ${hostname}</h2>
   <div class="url">${url}</div>
-  <p>This site actively blocks all proxy and iframe access at the server level.<br>This is a browser + server restriction — no proxy can bypass it.</p>
-  <div class="tip">💡 <strong>To access this site:</strong> open it directly in a new tab. Proxies cannot load Spotify, Instagram, TikTok, Facebook or Twitter — this is by their design, not a bug in Maths Proxy.</div>
-  <br><a href="javascript:history.back()">← Go back</a>
-  </body></html>`;
+  <p>This site enforces anti-proxy protection at the server level. No proxy can bypass it.</p>
+  <div class="tip">💡 Spotify, Instagram, TikTok, Facebook and X all block proxies. Open them directly in a new tab.</div>
+  <br><br><a href="javascript:history.back()">← Go back</a></body></html>`;
 }
 
 function errorPage(url, msg) {
-  return `<!DOCTYPE html><html><head><title>Error - Maths Proxy</title>
-  <style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:560px;margin:0 auto}
-  h2{color:#e94560}p{color:#9a9abf;line-height:1.6}.url{background:#13132a;padding:8px 14px;border-radius:6px;color:#00d4aa;word-break:break-all;margin:12px 0;display:block}
-  .err{background:#1a0808;border:1px solid #e94560;padding:10px 14px;border-radius:6px;color:#e94560;margin:12px 0}a{color:#4d9de0}
+  return `<!DOCTYPE html><html><head><title>Error</title>
+  <style>body{font-family:monospace;padding:60px 40px;background:#07070f;color:#eeeef5;max-width:540px;margin:0 auto}
+  h2{color:#e94560}p{color:#9a9abf;line-height:1.6}.url{background:#13132a;padding:8px 14px;border-radius:6px;color:#00d4aa;word-break:break-all;margin:12px 0;display:block;font-size:12px}
+  .err{background:#1a0808;border:1px solid #e94560;padding:10px 14px;border-radius:6px;color:#e94560;margin:12px 0;font-size:13px}a{color:#4d9de0}
   </style></head><body>
-  <h2>⚠ Proxy Error</h2>
-  <span class="url">${url}</span>
+  <h2>⚠ Proxy Error</h2><span class="url">${url}</span>
   <div class="err">${msg}</div>
   <p>The site may block proxies, require login, or be unavailable.</p>
-  <a href="javascript:history.back()">← Go back</a>
-  </body></html>`;
+  <a href="javascript:history.back()">← Go back</a></body></html>`;
 }
 
-app.listen(PORT, () => console.log(`✓ Maths Proxy v3 on port ${PORT}`));
+app.listen(PORT, () => console.log(`✓ Maths Proxy v4 on port ${PORT}`));
